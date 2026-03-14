@@ -41,15 +41,41 @@ async function learnerAgent(state: ScenarioState): Promise<Partial<ScenarioState
   const hasRecordings = Array.isArray(recordings) && recordings.length > 0;
 
   const llm = createModel();
-  const prompt = `You are the Learner agent. You receive ALL saved recordings from the app (transcribed audio) plus any other learner info.
+  const prompt = `You are a learner profiling assistant.
 
-Your job: read every recording and produce a short, structured summary (2-5 sentences) for the Orchestrator. Include: what the learner has practiced, level, recurring topics or gaps, and any constraints. Use this so the Orchestrator can personalize the next conversation.
+You will be given a conversation history between an ESL learner and an AI language practice agent.
+
+Your job is to build a character profile of the English learner based only on what you observe in the conversation. Start with the following profile and improve using the conversation history.
+
+Output the following:
+
+- **Name:** [Their name, or "Unknown" if not mentioned]
+- **Background:** [Where they may be from, their situation — based only on clues in the conversation]
+- **English Level:** [Beginner / Elementary / Intermediate — based on how they spoke]
+- **Strengths:** [What they are already good at — vocabulary, politeness, sentence structure, etc.]
+- **Weaknesses:** [Where they struggle — grammar, word order, tense, etc.]
+- **Personality:** [How they come across — shy, confident, eager, hesitant, etc.]
+- **Topics They Know Well:** [Subjects or situations where they seemed comfortable]
+- **Topics They Struggle With:** [Situations or vocabulary that confused them]
+
+**Rules:**
+
+- Only use what is visible in the conversation — do not invent details
+- Be kind and neutral in tone
+- Keep each section brief — 1 to 3 points maximum
+- This profile will be used to personalize future practice sessions
 
 ${hasRecordings ? `All saved recordings (${recordings.length} total):\n${recordings.map((r, i) => `[${i + 1}] ${r.date ?? ""}: ${(r.transcript ?? "").slice(0, 500)}${(r.transcript?.length ?? 0) > 500 ? "…" : ""}`).join("\n\n")}` : "No recordings yet."}
 
-Other learner info (JSON): ${JSON.stringify({ ...userInfo, recordings: undefined }, null, 2)}
-
-Output only the summary text, no JSON.`;
+Learner info (JSON):
+${JSON.stringify(state.userInfo ?? {}, null, 2)}
+${
+  state.conversationHistory?.length
+    ? `
+Conversation history:
+${state.conversationHistory.map((m) => `${m.role}: ${m.text}`).join("\n")}`
+    : ""
+}`;
   const res = await llm.invoke([new HumanMessage(prompt)]);
   const text = typeof res.content === "string" ? res.content : String((res.content as unknown[])?.[0] ?? "");
   const learnerContext = text.trim();
@@ -93,20 +119,51 @@ async function imageUnderstandingAgent(state: ScenarioState): Promise<Partial<Sc
 async function orchestratorAgent(state: ScenarioState): Promise<Partial<ScenarioState>> {
   logAgentStart("orchestrator", state);
   const llm = createModel();
-  const prompt = `You are the Orchestrator agent. You receive:
-1) Learner context (from the Learner agent)—a summary derived from ALL the learner's saved recordings (transcripts and dates). Use this to personalize the conversation.
-2) A description of the current image/situation (from Image Understanding)
-3) Optional scenario context (e.g. "doctor", "store")
-4) The conversation so far (if any)
+  const prompt = `You are a scenario builder for an English language learning app.
 
-Synthesize these into a single, clear "orchestrated context" (one short paragraph) that the Planner will use to decide the next turn. Do not generate dialogue yet—only summarize the situation and what should happen next from the conversation's perspective.
+You will be given:
+
+- **IMAGE DESCRIPTION:** A description of a real-world scene
+- **LEARNER PROFILE:** A description of an ESL learner's background, personality, and English level
+
+Your job is to combine these into a structured character and scene setup.
+
+Output ONLY a valid JSON object. No extra text, no markdown, no explanation.
+
+{
+  "learner": {
+    "name": "string — learner's name or 'Unknown'",
+    "background": "string — where they are from and their situation",
+    "english_level": "string — Beginner / Elementary / Intermediate",
+    "strengths": ["string"],
+    "weaknesses": ["string"],
+    "personality": "string — shy / confident / eager / hesitant / etc."
+  },
+  "scene": {
+    "location": "string — where the scenario takes place",
+    "situation": "string — one sentence describing what is happening",
+    "mood": "string — calm / busy / stressful / friendly / etc."
+  },
+  "conversation_partner": {
+    "name": "string — a fitting name for this character",
+    "role": "string — e.g. cashier, doctor, neighbour, coworker",
+    "personality": "string — how they should behave toward the learner",
+    "opening_line": "string — the first thing they say to start the conversation"
+  }
+}
+
+**Rules:**
+
+- Output ONLY the JSON — no preamble or closing text
+- Base the conversation partner entirely on who would realistically be in the scene
+- Match complexity to the learner's english level
+- Keep all language at or below a Canadian Grade 5 level
+- If any detail is unknown, make a reasonable guess based on context
 
 Learner context (from all recordings): ${state.learnerContext}
 Image/situation: ${state.imageDescription}
 ${state.scenarioContext ? `Scenario: ${state.scenarioContext}` : ""}
-${state.conversationHistory?.length ? `Conversation so far:\n${state.conversationHistory.map((m: ConversationTurn) => `${m.role}: ${m.text}`).join("\n")}` : ""}
-
-Output only the orchestrated context paragraph.`;
+${state.conversationHistory?.length ? `Conversation so far:\n${state.conversationHistory.map((m: ConversationTurn) => `${m.role}: ${m.text}`).join("\n")}` : ""}`;
   const res = await llm.invoke([new HumanMessage(prompt)]);
   const text = typeof res.content === "string" ? res.content : String((res.content as unknown[])?.[0] ?? "");
   const orchestratedContext = text.trim();
@@ -148,15 +205,30 @@ Output valid JSON only, no markdown:
 async function taskGeneratorAgent(state: ScenarioState): Promise<Partial<ScenarioState>> {
   logAgentStart("task_generator", state);
   const llm = createModel();
-  const prompt = `You are the Task Generator agent. The Planner produced a plan. Turn it into the final script:
+  const prompt = `You are a conversation partner in an English language practice session.
+
+You will be given:
+
+- LEARNER PROFILE: A description of the ESL learner's background, level, and personality
+- CONVERSATION PARTNER: A description of who you are playing in this scenario
+- SCENE: A description of where this conversation is taking place
+- CONVERSATION HISTORY: Everything said so far
+
+Your job is to reply as the conversation partner — say only the next thing your character would naturally say.
+
+Rules:
+
+- Stay in character at all times
+- Keep your response to 1 to 3 sentences maximum
+- Use simple, natural language (Grade 5 level or below)
+- Match your tone to the scene mood and your character's personality
+- If the learner makes a grammar mistake, do NOT correct them — just respond naturally
+- If the learner seems confused, gently rephrase or slow down
+- Never break character or mention that this is a practice session
+- End your line in a way that invites the learner to respond
 
 Plan:
-${state.plan}
-
-Output valid JSON only:
-{"voiceAgentLine":"<exact line for the voice agent to speak>", "suggestedUserResponses":["<phrase 1>", "<phrase 2>", ...]}
-
-Give 2-4 suggested user responses. Keep the voice agent line natural and one sentence.`;
+${state.plan}`;
   const res = await llm.invoke([new HumanMessage(prompt)]);
   const raw = typeof res.content === "string" ? res.content : String((res.content as unknown[])?.[0] ?? "");
   const parsed = (() => {
@@ -180,15 +252,80 @@ Give 2-4 suggested user responses. Keep the voice agent line natural and one sen
 async function feedbackAgent(state: ScenarioState): Promise<Partial<ScenarioState>> {
   logAgentStart("feedback", state);
   const llm = createModel();
-  const prompt = `You are the Feedback agent. Review the generated turn and ensure it's ready for the learner.
+  const prompt = `You are a **conversation script reviewer for English language learners**.
+
+Your job is to review a generated conversation and make sure it follows the **scenario and language level rules**.
+
+You will receive:
+
+- A **scenario description**
+- A **conversation script between two people**
+
+Your task is to check that the conversation is **simple, correct, and stays within the scenario**.
+
+---
+
+**Rules:**
+
+- All language by PersonB be at or below a **Canadian Grade 5 reading level**
+- Sentences should be **short, clear, and simple**
+- Avoid complex words, idioms, slang, or technical language
+- The conversation must **stay within the scenario**
+- Do **not allow new topics or goals** that were not in the scenario
+- The characters must behave **in a way that matches the scenario roles**
+- The conversation should feel **natural and realistic**
+
+---
+
+**What to Check:**
+
+1. **Language Level**
+    - Words should be easy for a **10–11 year old** native english speaker to understand
+    - Sentences should not be long or complex
+    - Replace difficult words with simpler ones when needed
+2. **Scenario Alignment**
+    - The conversation follows the **plot summary**
+    - The **key talking points appear in the conversation**
+    - The speakers stay in the **same setting and situation**
+    - The goal of the interaction does not change
+3. **Character Consistency**
+    - Person A behaves like an **ESL learner**
+    - Person B behaves like a **patient, friendly native speaker**
+    - Their roles match the **characters defined in the scenario**
+
+---
+
+**Output the following in** a structured json output:
+
+**Review Result:** PASS or FAIL
+
+**Language Issues:**
+
+- List any lines that are too complex for Grade 5 English
+- Suggest a **simpler version**
+
+**Scenario Issues:**
+
+- List any places where the conversation **leaves the scenario or adds unrelated content**
+
+**Missing Talking Points:**
+
+- List any **key phrases or ideas from the scenario** that were not used
+
+**Suggestions:**
+
+- Provide short, clear edits that would fix the problems
+
+---
+
+**Important:**
+
+- Do **not rewrite the full conversation**
+- Only flag and suggest fixes where needed
+- Keep feedback **clear, short, and structured**
 
 Voice agent line: ${state.voiceAgentLine}
-Suggested responses: ${JSON.stringify(state.suggestedUserResponses ?? [])}
-
-If anything is unclear or inappropriate for ESL, fix it. Output valid JSON only:
-{"voiceAgentLine":"...", "suggestedUserResponses":[...]}
-
-Otherwise output the same content.`;
+Suggested responses: ${JSON.stringify(state.suggestedUserResponses ?? [])}`;
   const res = await llm.invoke([new HumanMessage(prompt)]);
   const raw = typeof res.content === "string" ? res.content : String((res.content as unknown[])?.[0] ?? "");
   try {
