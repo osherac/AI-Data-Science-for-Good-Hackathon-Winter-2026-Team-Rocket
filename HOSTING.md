@@ -30,6 +30,8 @@ NEXTJS_ENV=development
 
 This makes the preview use your `.env` when loading environment variables. Production on Cloudflare uses the variables you set in the dashboard (step 7).
 
+**Note:** Use `npm run dev` for everyday local development (plain Next.js, no Cloudflare runtime). The `npm run preview` command runs the app in Cloudflare’s local runtime (workerd) and requires GLIBC 2.32+ (e.g. newer WSL2/Ubuntu). On older Linux/WSL you may see GLIBC or workerd errors when running preview; you can ignore them and use `npm run dev` instead. Deploy with `npm run deploy` from the same machine or from CI.
+
 ---
 
 ## 3. Log in to Cloudflare (first time only)

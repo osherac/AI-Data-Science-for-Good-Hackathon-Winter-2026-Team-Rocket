@@ -110,11 +110,13 @@ export default function Home() {
   const [startStatus, setStartStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [startError, setStartError] = useState("");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
       const mr = new MediaRecorder(stream);
       chunksRef.current = [];
       mr.ondataavailable = (e) => {
@@ -122,8 +124,9 @@ export default function Home() {
       };
       mr.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
       };
-      mr.start();
+      mr.start(250);
       mediaRecorderRef.current = mr;
       setRecording(true);
       setTranscribeStatus("idle");
@@ -140,11 +143,26 @@ export default function Home() {
       setRecording(false);
       return;
     }
-    mr.stop();
     setRecording(false);
     setTranscribeStatus("loading");
+
+    const stopped = new Promise<void>((resolve) => {
+      const prevOnStop = mr.onstop;
+      mr.onstop = () => {
+        prevOnStop?.();
+        resolve();
+      };
+    });
+    mr.stop();
+    await stopped;
+
     try {
       const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      if (blob.size === 0) {
+        setTranscribeStatus("error");
+        setLastTranscript("No audio recorded. Try speaking and record a bit longer.");
+        return;
+      }
       const form = new FormData();
       form.set("audio", blob, "audio.webm");
       const res = await fetch("/api/transcribe", { method: "POST", body: form });
