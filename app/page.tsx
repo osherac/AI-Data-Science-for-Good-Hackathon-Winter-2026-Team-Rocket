@@ -69,6 +69,100 @@ function stripJsonFromText(text: string): string {
   return text;
 }
 
+function toTitleCase(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function truncateText(value: string, max = 24): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 1).trimEnd()}…`;
+}
+
+function extractKeyTerms(lines: string[]): string[] {
+  const STOP_WORDS = new Set([
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "to",
+    "for",
+    "with",
+    "is",
+    "are",
+    "am",
+    "i",
+    "you",
+    "me",
+    "my",
+    "we",
+    "our",
+    "it",
+    "this",
+    "that",
+    "can",
+    "could",
+    "would",
+    "please",
+    "hello",
+    "hi",
+    "thank",
+    "thanks",
+    "where",
+    "what",
+    "when",
+    "how",
+  ]);
+
+  const counts = new Map<string, number>();
+  const joined = lines.join(" ").toLowerCase();
+  const words = joined.match(/[a-z][a-z'-]{2,}/g) ?? [];
+  for (const word of words) {
+    if (STOP_WORDS.has(word)) continue;
+    counts.set(word, (counts.get(word) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([word]) => word);
+}
+
+function summarizeConversation(
+  conversation: ConversationMessage[],
+  scenarioContext?: string
+): string {
+  const normalizedContext = (scenarioContext ?? "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (normalizedContext) return truncateText(toTitleCase(normalizedContext), 22);
+
+  const cleaned = conversation
+    .map((m) => stripJsonFromText(m.text).replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const userLines = conversation
+    .filter((m) => m.role === "user")
+    .map((m) => stripJsonFromText(m.text).replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const sourceLines = userLines.length > 0 ? userLines : cleaned;
+  const combined = sourceLines.join(" ").toLowerCase();
+  const terms = extractKeyTerms(sourceLines);
+
+  let intent = "Quick chat";
+  if (/\b(where|find|located|aisle)\b/.test(combined)) intent = "Find item";
+  else if (/\b(price|cost|pay|dollar|money)\b/.test(combined)) intent = "Ask price";
+  else if (/\b(need|want|looking)\b/.test(combined)) intent = "Ask help";
+  else if (/\b(doctor|medicine|pharmacy|pain|appointment)\b/.test(combined)) intent = "Health talk";
+  else if (/\b(school|teacher|class|student|office)\b/.test(combined)) intent = "School talk";
+
+  if (terms[0]) return truncateText(`${intent}: ${terms[0]}`);
+  return intent;
+}
+
 /** Pick an emoji to add context for an AI message. */
 function getAgentMessageEmoji(text: string): string {
   if (!text || typeof text !== "string") return "💬";
@@ -298,8 +392,7 @@ function saveConversationToStorage(
   if (conversation.length === 0) return;
   const list = getStoredConversations();
   const id = `conv-${Date.now()}`;
-  const firstLine = conversation.find((m) => m.role === "agent")?.text;
-  const title = firstLine ? stripJsonFromText(firstLine).slice(0, 40) + (firstLine.length > 40 ? "…" : "") : undefined;
+  const title = summarizeConversation(conversation, scenarioContext);
   const entry: StoredConversation = {
     id,
     createdAt: new Date().toISOString(),
@@ -402,6 +495,7 @@ export default function Home() {
 
   const openUploadView = useCallback(() => {
     setView("start-upload");
+    setSelectedCategory(null);
     setStartStatus("idle");
     setImagePreview(null);
     setImageFile(null);
@@ -431,6 +525,7 @@ export default function Home() {
 
   const openSavedConversation = useCallback((stored: StoredConversation) => {
     setConversation(stored.conversation);
+    setSelectedCategory(stored.scenarioContext ?? null);
     const lastAgent = [...stored.conversation].reverse().find((m) => m.role === "agent");
     setAgentLine(lastAgent ? stripJsonFromText(lastAgent.text) : "");
     setSuggestions([]);
@@ -634,6 +729,11 @@ export default function Home() {
       }
 
       const scenario = await scenarioRes.json();
+      const resolvedScenarioContext =
+        typeof scenario?.scenarioContext === "string" && scenario.scenarioContext.trim()
+          ? scenario.scenarioContext.trim()
+          : null;
+      if (resolvedScenarioContext) setSelectedCategory(resolvedScenarioContext);
       const rawVoice = scenario?.voiceAgentLine ?? "";
       const voiceLine = stripJsonFromText(typeof rawVoice === "string" ? rawVoice : String(rawVoice));
       const suggested = Array.isArray(scenario?.suggestedUserResponses) ? scenario.suggestedUserResponses : [];
@@ -774,12 +874,15 @@ export default function Home() {
           console.error("[pickSuggestion] API error", res.status, errMsg);
           return;
         }
-        let data: { voiceAgentLine?: string; suggestedUserResponses?: string[] };
+        let data: { voiceAgentLine?: string; suggestedUserResponses?: string[]; scenarioContext?: string };
         try {
-          data = JSON.parse(raw) as { voiceAgentLine?: string; suggestedUserResponses?: string[] };
+          data = JSON.parse(raw) as { voiceAgentLine?: string; suggestedUserResponses?: string[]; scenarioContext?: string };
         } catch {
           setConversationError("Invalid response from server");
           return;
+        }
+        if (typeof data.scenarioContext === "string" && data.scenarioContext.trim()) {
+          setSelectedCategory(data.scenarioContext.trim());
         }
         const rawAgent = data?.voiceAgentLine ?? "";
         const agentText = stripJsonFromText(typeof rawAgent === "string" ? rawAgent : String(rawAgent));
@@ -921,7 +1024,7 @@ export default function Home() {
                         ) : null}
                         <span className="past-scenario-overlay" />
                         <span className="past-scenario-title">
-                          {stored.title ?? "Conversation"}
+                          {summarizeConversation(stored.conversation, stored.scenarioContext)}
                         </span>
                         <button
                           type="button"

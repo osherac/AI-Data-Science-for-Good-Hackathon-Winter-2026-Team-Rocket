@@ -25,7 +25,7 @@ const SCRIPT_SCHEMA = {
 
 async function fallbackSingleCall(
   body: ScenarioBody
-): Promise<{ voiceAgentLine: string; suggestedUserResponses: string[] }> {
+): Promise<{ voiceAgentLine: string; suggestedUserResponses: string[]; scenarioContext?: string }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY not set");
   const { imageBase64, imageMimeType, userInfo = {}, conversationHistory = [], scenarioContext } = body;
@@ -64,6 +64,7 @@ async function fallbackSingleCall(
   return {
     voiceAgentLine: parsed.voiceAgentLine ?? "",
     suggestedUserResponses: Array.isArray(parsed.suggestedUserResponses) ? parsed.suggestedUserResponses : [],
+    scenarioContext,
   };
 }
 
@@ -98,12 +99,17 @@ export async function POST(req: NextRequest) {
     };
     // LangGraph 1.x state uses internal OverwriteValue types; cast so TS accepts our plain object
     const result = await graph.invoke(input as never);
+    const resolvedScenarioContext =
+      typeof result.scenarioContext === "string" && result.scenarioContext.trim()
+        ? result.scenarioContext.trim()
+        : scenarioContext;
 
     return NextResponse.json({
       voiceAgentLine: result.voiceAgentLine ?? "",
       suggestedUserResponses: Array.isArray(result.suggestedUserResponses)
         ? result.suggestedUserResponses
         : [],
+      scenarioContext: resolvedScenarioContext,
     });
   } catch (e) {
     const message =
