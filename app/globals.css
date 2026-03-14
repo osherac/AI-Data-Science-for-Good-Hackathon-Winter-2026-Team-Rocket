@@ -2,13 +2,20 @@
 
 :root {
   --background: #f7f1e4;
-  --foreground: #193034;
-  --panel: rgba(255, 250, 243, 0.94);
-  --line: rgba(25, 48, 52, 0.1);
-  --teal: #1a8b7d;
-  --teal-deep: #114f58;
-  --gold: #efb354;
-  --shadow: 0 18px 40px rgba(53, 41, 25, 0.12);
+  --foreground: #2c2c2c;
+  --panel: #fffef9;
+  --line: rgba(44, 44, 44, 0.08);
+  --accent: #e5a712;
+  --accent-soft: rgba(229, 167, 18, 0.18);
+  --pastel-mint: #d4eddf;
+  --pastel-peach: #fce8dc;
+  --pastel-sky: #dce8f5;
+  --shadow: 0 10px 32px rgba(53, 41, 25, 0.08);
+  --shadow-hover: 0 14px 40px rgba(53, 41, 25, 0.12);
+  --radius-card: 1.5rem;
+  --radius-btn: 1.25rem;
+  --tap-scale: 0.98;
+  --transition: 0.2s ease;
 }
 
 @theme inline {
@@ -34,8 +41,8 @@ body {
   color: var(--foreground);
   font-family: var(--font-manrope), sans-serif;
   background:
-    radial-gradient(circle at top, rgba(239, 179, 84, 0.24), transparent 28%),
-    linear-gradient(180deg, #f8f3e8 0%, #f2eadc 100%);
+    radial-gradient(circle at top, rgba(229, 167, 18, 0.12), transparent 32%),
+    linear-gradient(180deg, #faf7f0 0%, #f5efe6 100%);
 }
 
 button {
@@ -59,9 +66,9 @@ button {
   flex-direction: column;
   gap: 0.9rem;
   border-radius: 2rem;
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  background: linear-gradient(180deg, rgba(255, 251, 244, 0.96), rgba(247, 241, 228, 0.96));
-  box-shadow: 0 24px 56px rgba(53, 41, 25, 0.12);
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel) 0%, #faf7f0 100%);
+  box-shadow: var(--shadow);
 }
 
 .top-bar,
@@ -91,9 +98,10 @@ button {
 .brand-mark {
   width: 2.8rem;
   height: 2.8rem;
-  border-radius: 1rem;
-  background: linear-gradient(135deg, var(--teal) 0%, var(--teal-deep) 100%);
-  color: #f7fbfb;
+  border-radius: var(--radius-btn);
+  background: linear-gradient(135deg, var(--accent) 0%, #c98f0e 100%);
+  color: #fff;
+  box-shadow: var(--shadow);
 }
 
 .brand p,
@@ -113,7 +121,7 @@ button {
 .brand span {
   display: block;
   font-size: 0.72rem;
-  color: rgba(25, 48, 52, 0.58);
+  color: rgba(44, 44, 44, 0.55);
 }
 
 .icon-circle {
@@ -134,7 +142,7 @@ button {
 
 .main-card,
 .scenario-row {
-  border-radius: 1.7rem;
+  border-radius: var(--radius-card);
 }
 
 .main-card {
@@ -144,8 +152,8 @@ button {
   flex-direction: column;
   justify-content: space-evenly;
   background:
-    radial-gradient(circle at top right, rgba(26, 139, 125, 0.14), transparent 34%),
-    radial-gradient(circle at top left, rgba(239, 179, 84, 0.2), transparent 34%),
+    radial-gradient(circle at top right, var(--pastel-mint), transparent 36%),
+    radial-gradient(circle at top left, var(--pastel-peach), transparent 36%),
     var(--panel);
 }
 
@@ -154,17 +162,25 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 0.9rem;
+  transition: transform var(--transition);
+}
+.big-start:hover .big-ring {
+  filter: brightness(1.03);
+  box-shadow: 0 0 0 0.85rem var(--accent-soft), 0 0 0 1.7rem rgba(229, 167, 18, 0.08);
+}
+.big-start:active {
+  transform: scale(var(--tap-scale));
 }
 
 .big-ring {
   width: min(44vw, 11rem);
   height: min(44vw, 11rem);
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(233, 245, 242, 0.98));
+  background: linear-gradient(180deg, #fff 0%, var(--pastel-mint) 100%);
   box-shadow:
-    0 0 0 0.85rem rgba(26, 139, 125, 0.07),
-    0 0 0 1.7rem rgba(26, 139, 125, 0.03);
-  color: var(--teal-deep);
+    0 0 0 0.85rem var(--accent-soft),
+    0 0 0 1.7rem rgba(229, 167, 18, 0.06);
+  color: #b8860b;
 }
 
 .big-label {
@@ -199,14 +215,22 @@ button {
 .action-button {
   min-height: 5.5rem;
   gap: 0.45rem;
-  border-radius: 1.2rem;
+  border-radius: var(--radius-btn);
+  transition: transform var(--transition), box-shadow var(--transition), filter var(--transition);
+}
+.action-button:hover {
+  filter: brightness(1.02);
+  box-shadow: var(--shadow-hover);
+}
+.action-button:active {
+  transform: scale(var(--tap-scale));
 }
 
 .action-icon {
   width: 3rem;
   height: 3rem;
   border-radius: 1rem;
-  background: linear-gradient(180deg, rgba(26, 139, 125, 0.12), rgba(255, 255, 255, 0.94));
+  background: linear-gradient(180deg, var(--accent-soft), rgba(255, 255, 255, 0.94));
 }
 
 .action-button span,
@@ -217,8 +241,8 @@ button {
 }
 
 .scenario-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.65rem;
   padding: 0.75rem;
 }
@@ -226,7 +250,15 @@ button {
 .scenario-button {
   min-height: 4.8rem;
   gap: 0.35rem;
-  border-radius: 1.05rem;
+  border-radius: var(--radius-btn);
+  transition: transform var(--transition), box-shadow var(--transition), filter var(--transition);
+}
+.scenario-button:hover {
+  filter: brightness(1.02);
+  box-shadow: var(--shadow-hover);
+}
+.scenario-button:active {
+  transform: scale(var(--tap-scale));
 }
 
 .bottom-nav {
@@ -241,12 +273,15 @@ button {
   min-height: 3.6rem;
   gap: 0.3rem;
   border-radius: 1rem;
-  color: rgba(25, 48, 52, 0.55);
+  color: rgba(44, 44, 44, 0.55);
+  transition: transform var(--transition);
 }
-
+.nav-button:active {
+  transform: scale(var(--tap-scale));
+}
 .nav-button.active {
-  background: linear-gradient(180deg, rgba(26, 139, 125, 0.14), rgba(255, 255, 255, 0.86));
-  color: var(--teal-deep);
+  background: linear-gradient(180deg, var(--accent-soft), rgba(255, 255, 255, 0.92));
+  color: #b8860b;
 }
 
 .brand-glyph,
@@ -268,7 +303,7 @@ button {
 .nav-button:focus-visible,
 .icon-circle:focus-visible,
 .big-start:focus-visible {
-  outline: 3px solid rgba(26, 139, 125, 0.22);
+  outline: 3px solid rgba(229, 167, 18, 0.35);
   outline-offset: 2px;
 }
 
@@ -298,6 +333,43 @@ button {
   .nav-button {
     min-height: 3.25rem;
   }
+}
+
+.phrase-btn {
+  min-height: 3.5rem;
+  padding: 0.9rem 1.25rem;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  font-weight: 700;
+  font-size: 1rem;
+  text-align: center;
+  transition: transform var(--transition), box-shadow var(--transition), filter var(--transition);
+}
+.phrase-btn:hover {
+  filter: brightness(1.02);
+  box-shadow: var(--shadow-hover);
+}
+.phrase-btn:active {
+  transform: scale(var(--tap-scale));
+}
+
+.chip {
+  padding: 0.6rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.8);
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: transform var(--transition), background var(--transition);
+}
+.chip:hover,
+.chip.selected {
+  background: var(--accent-soft);
+}
+.chip:active {
+  transform: scale(var(--tap-scale));
 }
 
 @media (min-width: 700px) {
