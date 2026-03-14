@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 
 const SCRIPTS_KEY = "talkbridge_scripts";
+const MAX_RECORDINGS = 20;
 const CATEGORIES = [
   { id: "school", label: "School" },
   { id: "doctor", label: "Doctor" },
@@ -11,7 +12,13 @@ const CATEGORIES = [
   { id: "work", label: "Work" },
 ] as const;
 
-type View = "home" | "record" | "start-upload" | "conversation";
+export type StoredRecording = {
+  id: string;
+  transcript: string;
+  date: string;
+};
+
+type View = "home" | "record" | "start-upload" | "conversation" | "recordings";
 
 function Icon({
   name,
@@ -78,20 +85,32 @@ function Icon({
   return <svg {...s}>{path[name] ?? null}</svg>;
 }
 
-function getStoredScripts(): { transcript: string; date: string }[] {
+function getStoredRecordings(): StoredRecording[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(SCRIPTS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    const list = Array.isArray(parsed) ? parsed : [];
+    return list
+      .map((item: { id?: string; transcript?: string; date?: string }, i: number) => ({
+        id: item.id ?? `recording-${i}-${item.date ?? Date.now()}`,
+        transcript: item.transcript ?? "",
+        date: item.date ?? new Date().toISOString(),
+      }))
+      .slice(0, MAX_RECORDINGS);
   } catch {
     return [];
   }
 }
 
-function saveScript(transcript: string) {
-  const scripts = getStoredScripts();
-  scripts.push({ transcript, date: new Date().toISOString() });
-  localStorage.setItem(SCRIPTS_KEY, JSON.stringify(scripts));
+function saveRecording(transcript: string): StoredRecording {
+  const list = getStoredRecordings();
+  const id = `recording-${Date.now()}`;
+  const rec: StoredRecording = { id, transcript, date: new Date().toISOString() };
+  list.unshift(rec);
+  const capped = list.slice(0, MAX_RECORDINGS);
+  localStorage.setItem(SCRIPTS_KEY, JSON.stringify(capped));
+  return rec;
 }
 
 export default function Home() {
@@ -109,9 +128,16 @@ export default function Home() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [startStatus, setStartStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [startError, setStartError] = useState("");
+  const [conversationError, setConversationError] = useState<string | null>(null);
+  const [expandedRecordingId, setExpandedRecordingId] = useState<string | null>(null);
+  const [recordingsList, setRecordingsList] = useState<StoredRecording[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  const refreshRecordings = useCallback(() => {
+    setRecordingsList(getStoredRecordings());
+  }, []);
 
   const startRecording = useCallback(async () => {
     try {
@@ -181,7 +207,7 @@ export default function Home() {
       const data = JSON.parse(raw) as { transcript?: string };
       const transcript = data.transcript ?? "";
       setLastTranscript(transcript);
-      if (transcript) saveScript(transcript);
+      if (transcript) saveRecording(transcript);
       setTranscribeStatus("done");
     } catch (e) {
       setTranscribeStatus("error");
@@ -208,9 +234,9 @@ export default function Home() {
           body: JSON.stringify({ imageBase64: base64, imageMimeType: mime }),
         }),
         (async () => {
-          const scripts = getStoredScripts();
+          const recordings = getStoredRecordings();
           const userInfo = {
-            pastScripts: scripts.slice(-10).map((s) => s.transcript),
+            recordings: recordings,
           };
           return fetch("/api/scenario", {
             method: "POST",
@@ -225,10 +251,27 @@ export default function Home() {
         })(),
       ]);
 
-      if (!visionRes.ok) throw new Error("Image understanding failed");
+      if (!visionRes.ok) {
+        const visionText = await visionRes.text();
+        let visionErr = "Image understanding failed";
+        try {
+          const v = JSON.parse(visionText);
+          if (v.error) visionErr = v.error;
+        } catch {
+          if (visionText) visionErr = visionText;
+        }
+        throw new Error(visionErr);
+      }
       if (!scenarioRes.ok) {
-        const err = await scenarioRes.json();
-        throw new Error(err.error || "Scenario failed");
+        const scenarioText = await scenarioRes.text();
+        let scenarioErr = "Scenario generation failed";
+        try {
+          const s = JSON.parse(scenarioText);
+          if (s.error) scenarioErr = s.error;
+        } catch {
+          if (scenarioText) scenarioErr = scenarioText;
+        }
+        throw new Error(scenarioErr);
       }
 
       const scenario = await scenarioRes.json();
@@ -238,8 +281,10 @@ export default function Home() {
       setStartStatus("ready");
       setView("conversation");
     } catch (e) {
-      setStartError(e instanceof Error ? e.message : "Something went wrong");
+      const msg = e instanceof Error ? e.message : "Something went wrong";
+      setStartError(msg);
       setStartStatus("error");
+      console.error("[Start flow] Error:", e);
     }
   }, [imageFile, selectedCategory]);
 
@@ -266,25 +311,40 @@ export default function Home() {
       setConversation(newHistory);
       setSuggestions([]);
       setAgentLine("");
+      setConversationError(null);
       try {
-        const scripts = getStoredScripts();
+        const recordings = getStoredRecordings();
         const res = await fetch("/api/scenario", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            userInfo: { pastScripts: scripts.slice(-10).map((s) => s.transcript) },
+            userInfo: { recordings },
             scenarioContext: selectedCategory || undefined,
             conversationHistory: newHistory,
           }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
+        const raw = await res.text();
+        if (!res.ok) {
+          let errMsg = "Failed to get next turn";
+          try {
+            const data = JSON.parse(raw);
+            if (data.error) errMsg = data.error;
+          } catch {
+            if (raw) errMsg = raw;
+          }
+          setConversationError(errMsg);
+          console.error("[pickSuggestion] API error", res.status, errMsg);
+          return;
+        }
+        const data = JSON.parse(raw) as { voiceAgentLine?: string; suggestedUserResponses?: string[] };
         const agentText = data.voiceAgentLine ?? "";
         setAgentLine(agentText);
         setSuggestions(Array.isArray(data.suggestedUserResponses) ? data.suggestedUserResponses : []);
         setConversation((c) => [...c, { role: "agent", text: agentText }]);
       } catch (e) {
-        console.error(e);
+        const msg = e instanceof Error ? e.message : "Something went wrong";
+        setConversationError(msg);
+        console.error("[pickSuggestion] Error:", e);
       }
     },
     [conversation, selectedCategory]
@@ -305,10 +365,11 @@ export default function Home() {
                 {view === "record" && "Record conversation"}
                 {view === "start-upload" && "Start with image"}
                 {view === "conversation" && "Conversation"}
+                {view === "recordings" && "Recordings"}
               </span>
             </div>
           </div>
-          {(view === "record" || view === "start-upload" || view === "conversation") && (
+          {(view === "record" || view === "start-upload" || view === "conversation" || view === "recordings") && (
             <button
               type="button"
               className="icon-circle"
@@ -321,6 +382,8 @@ export default function Home() {
                 setConversation([]);
                 setAgentLine("");
                 setSuggestions([]);
+                setConversationError(null);
+                setExpandedRecordingId(null);
               }}
             >
               <Icon name="back" className="small-glyph" size={20} />
@@ -364,6 +427,16 @@ export default function Home() {
                     <span>Start</span>
                   </button>
                 </div>
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-[var(--accent)] underline underline-offset-2"
+                  onClick={() => {
+                    setView("recordings");
+                    refreshRecordings();
+                  }}
+                >
+                  View recordings
+                </button>
               </div>
             </section>
             <section className="scenario-row">
@@ -423,6 +496,16 @@ export default function Home() {
                 <p className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-3 text-sm text-[var(--foreground)]">
                   {lastTranscript || "—"}
                 </p>
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-[var(--accent)] underline underline-offset-2"
+                  onClick={() => {
+                    setView("recordings");
+                    refreshRecordings();
+                  }}
+                >
+                  View all recordings
+                </button>
               </div>
             )}
             {transcribeStatus === "error" && !recording && (
@@ -497,6 +580,11 @@ export default function Home() {
 
         {view === "conversation" && (
           <section className="main-card flex flex-1 flex-col gap-4 overflow-auto">
+            {conversationError && (
+              <div className="rounded-[var(--radius-btn)] border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                {conversationError}
+              </div>
+            )}
             <div className="space-y-2">
               {conversation.map((m, i) => (
                 <div
@@ -542,6 +630,54 @@ export default function Home() {
                 </button>
               ))}
             </div>
+          </section>
+        )}
+
+        {view === "recordings" && (
+          <section className="main-card flex flex-1 flex-col gap-3 overflow-auto">
+            <p className="text-sm text-[var(--foreground)]/70">
+              Up to {MAX_RECORDINGS} recordings saved on this device. Tap View to see the transcribed text.
+            </p>
+            {recordingsList.length === 0 ? (
+              <p className="text-sm text-[var(--foreground)]/60">No recordings yet. Record from the home screen.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {recordingsList.map((rec, i) => (
+                  <li
+                    key={rec.id}
+                    className="rounded-[var(--radius-btn)] border border-[var(--line)] bg-[var(--panel)] p-3 shadow-[var(--shadow)]"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-[var(--foreground)]">
+                        Recording {recordingsList.length - i}
+                      </span>
+                      <span className="text-xs text-[var(--foreground)]/55">
+                        {new Date(rec.date).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="mt-2 w-full rounded-lg bg-[var(--accent-soft)] py-2 text-sm font-semibold text-[var(--foreground)] transition hover:brightness-95"
+                      onClick={() =>
+                        setExpandedRecordingId(expandedRecordingId === rec.id ? null : rec.id)
+                      }
+                    >
+                      {expandedRecordingId === rec.id ? "Hide text" : "View"}
+                    </button>
+                    {expandedRecordingId === rec.id && (
+                      <div className="mt-3 rounded-lg border border-[var(--line)] bg-white/60 p-3 text-sm text-[var(--foreground)]">
+                        {rec.transcript || "—"}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         )}
 

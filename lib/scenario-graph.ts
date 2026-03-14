@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { HumanMessage } from "@langchain/core/messages";
 import { StateGraph, START, END } from "@langchain/langgraph";
-import type { ScenarioState } from "./scenario-state";
+import type { ScenarioState, ConversationTurn } from "./scenario-state";
 import { ScenarioStateAnnotation } from "./scenario-state";
 
 function createModel() {
@@ -13,27 +13,61 @@ function createModel() {
   });
 }
 
+function logAgentStart(name: string, state: Partial<ScenarioState>, extra?: string) {
+  const preview: Record<string, string> = {};
+  if (state.userInfo != null) preview.userInfoKeys = Object.keys(state.userInfo).join(", ");
+  if (state.learnerContext) preview.learnerContext = state.learnerContext.slice(0, 80) + (state.learnerContext.length > 80 ? "…" : "");
+  if (state.imageDescription) preview.imageDescription = state.imageDescription.slice(0, 80) + (state.imageDescription.length > 80 ? "…" : "");
+  if (state.orchestratedContext) preview.orchestratedContext = state.orchestratedContext.slice(0, 80) + "…";
+  if (state.plan) preview.planLength = String(state.plan.length);
+  if (state.conversationHistory?.length) preview.turnCount = String(state.conversationHistory.length);
+  console.log(`[scenario:${name}] Starting.`, extra ?? "", JSON.stringify(preview));
+}
+
+function logAgentEnd(name: string, output: Partial<ScenarioState>) {
+  const preview: Record<string, string> = {};
+  if (output.learnerContext) preview.learnerContext = output.learnerContext.slice(0, 100) + (output.learnerContext.length > 100 ? "…" : "");
+  if (output.imageDescription) preview.imageDescription = output.imageDescription.slice(0, 80) + "…";
+  if (output.orchestratedContext) preview.orchestratedContext = output.orchestratedContext.slice(0, 100) + "…";
+  if (output.voiceAgentLine) preview.voiceAgentLine = output.voiceAgentLine.slice(0, 60) + "…";
+  if (output.suggestedUserResponses?.length) preview.suggestionsCount = String(output.suggestedUserResponses.length);
+  console.log(`[scenario:${name}] Done.`, JSON.stringify(preview));
+}
+
 async function learnerAgent(state: ScenarioState): Promise<Partial<ScenarioState>> {
+  logAgentStart("learner", state, "(reading all recordings and userInfo)");
+  const userInfo = state.userInfo ?? {};
+  const recordings = (userInfo.recordings as Array<{ id?: string; transcript?: string; date?: string }>) ?? [];
+  const hasRecordings = Array.isArray(recordings) && recordings.length > 0;
+
   const llm = createModel();
-  const prompt = `You are the Learner agent. Your only job is to summarize the learner's context for an ESL conversation scenario.
+  const prompt = `You are the Learner agent. You receive ALL saved recordings from the app (transcribed audio) plus any other learner info.
 
-Given the following raw learner info from the app (e.g. from localStorage: past scripts, preferences, level), output a short, structured summary (2-4 sentences) that will help other agents personalize the conversation. Focus on: level, relevant past experience, and any constraints.
+Your job: read every recording and produce a short, structured summary (2-5 sentences) for the Orchestrator. Include: what the learner has practiced, level, recurring topics or gaps, and any constraints. Use this so the Orchestrator can personalize the next conversation.
 
-Learner info (JSON):
-${JSON.stringify(state.userInfo ?? {}, null, 2)}
+${hasRecordings ? `All saved recordings (${recordings.length} total):\n${recordings.map((r, i) => `[${i + 1}] ${r.date ?? ""}: ${(r.transcript ?? "").slice(0, 500)}${(r.transcript?.length ?? 0) > 500 ? "…" : ""}`).join("\n\n")}` : "No recordings yet."}
+
+Other learner info (JSON): ${JSON.stringify({ ...userInfo, recordings: undefined }, null, 2)}
 
 Output only the summary text, no JSON.`;
   const res = await llm.invoke([new HumanMessage(prompt)]);
   const text = typeof res.content === "string" ? res.content : String((res.content as unknown[])?.[0] ?? "");
-  return { learnerContext: text.trim() };
+  const learnerContext = text.trim();
+  logAgentEnd("learner", { learnerContext });
+  return { learnerContext };
 }
 
 async function imageUnderstandingAgent(state: ScenarioState): Promise<Partial<ScenarioState>> {
+  logAgentStart("image_understanding", state);
   if (!state.imageBase64 || !state.imageMimeType) {
+    console.log("[scenario:image_understanding] Done. No image provided.");
     return { imageDescription: "No image provided." };
   }
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return { imageDescription: "No image provided." };
+  if (!apiKey) {
+    console.log("[scenario:image_understanding] Done. No API key.");
+    return { imageDescription: "No image provided." };
+  }
   const data = state.imageBase64.replace(/^data:image\/\w+;base64,/, "");
   const ai = new GoogleGenAI({ apiKey });
   const res = await ai.models.generateContent({
@@ -51,31 +85,37 @@ async function imageUnderstandingAgent(state: ScenarioState): Promise<Partial<Sc
     ],
   });
   const text = (res as { text?: string }).text ?? "";
-  return { imageDescription: text.trim() || "No description." };
+  const imageDescription = text.trim() || "No description.";
+  logAgentEnd("image_understanding", { imageDescription });
+  return { imageDescription };
 }
 
 async function orchestratorAgent(state: ScenarioState): Promise<Partial<ScenarioState>> {
+  logAgentStart("orchestrator", state);
   const llm = createModel();
   const prompt = `You are the Orchestrator agent. You receive:
-1) A summary of the learner (from the Learner agent)
+1) Learner context (from the Learner agent)—a summary derived from ALL the learner's saved recordings (transcripts and dates). Use this to personalize the conversation.
 2) A description of the current image/situation (from Image Understanding)
 3) Optional scenario context (e.g. "doctor", "store")
 4) The conversation so far (if any)
 
 Synthesize these into a single, clear "orchestrated context" (one short paragraph) that the Planner will use to decide the next turn. Do not generate dialogue yet—only summarize the situation and what should happen next from the conversation's perspective.
 
-Learner context: ${state.learnerContext}
+Learner context (from all recordings): ${state.learnerContext}
 Image/situation: ${state.imageDescription}
 ${state.scenarioContext ? `Scenario: ${state.scenarioContext}` : ""}
-${state.conversationHistory?.length ? `Conversation so far:\n${state.conversationHistory.map((m) => `${m.role}: ${m.text}`).join("\n")}` : ""}
+${state.conversationHistory?.length ? `Conversation so far:\n${state.conversationHistory.map((m: ConversationTurn) => `${m.role}: ${m.text}`).join("\n")}` : ""}
 
 Output only the orchestrated context paragraph.`;
   const res = await llm.invoke([new HumanMessage(prompt)]);
   const text = typeof res.content === "string" ? res.content : String((res.content as unknown[])?.[0] ?? "");
-  return { orchestratedContext: text.trim() };
+  const orchestratedContext = text.trim();
+  logAgentEnd("orchestrator", { orchestratedContext });
+  return { orchestratedContext };
 }
 
 async function plannerAgent(state: ScenarioState): Promise<Partial<ScenarioState>> {
+  logAgentStart("planner", state);
   const llm = createModel();
   const prompt = `You are the Planner agent. Given the orchestrated context, decide the next conversational turn:
 
@@ -96,14 +136,17 @@ Output valid JSON only, no markdown:
       return {};
     }
   })();
-  return {
+  const out = {
     plan: raw,
     voiceAgentLine: parsed.agentLine ?? "",
     suggestedUserResponses: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
   };
+  logAgentEnd("planner", out);
+  return out;
 }
 
 async function taskGeneratorAgent(state: ScenarioState): Promise<Partial<ScenarioState>> {
+  logAgentStart("task_generator", state);
   const llm = createModel();
   const prompt = `You are the Task Generator agent. The Planner produced a plan. Turn it into the final script:
 
@@ -124,15 +167,18 @@ Give 2-4 suggested user responses. Keep the voice agent line natural and one sen
       return {};
     }
   })();
-  return {
+  const out = {
     voiceAgentLine: parsed.voiceAgentLine ?? state.voiceAgentLine ?? "",
     suggestedUserResponses: Array.isArray(parsed.suggestedUserResponses)
       ? parsed.suggestedUserResponses
       : state.suggestedUserResponses ?? [],
   };
+  logAgentEnd("task_generator", out);
+  return out;
 }
 
 async function feedbackAgent(state: ScenarioState): Promise<Partial<ScenarioState>> {
+  logAgentStart("feedback", state);
   const llm = createModel();
   const prompt = `You are the Feedback agent. Review the generated turn and ensure it's ready for the learner.
 
@@ -149,20 +195,24 @@ Otherwise output the same content.`;
     const m = raw.match(/\{[\s\S]*\}/);
     if (m) {
       const parsed = JSON.parse(m[0]) as { voiceAgentLine?: string; suggestedUserResponses?: string[] };
-      return {
+      const out = {
         voiceAgentLine: parsed.voiceAgentLine ?? state.voiceAgentLine ?? "",
         suggestedUserResponses: Array.isArray(parsed.suggestedUserResponses)
           ? parsed.suggestedUserResponses
           : state.suggestedUserResponses ?? [],
       };
+      logAgentEnd("feedback", out);
+      return out;
     }
   } catch {
     /* use state as-is */
   }
+  logAgentEnd("feedback", { voiceAgentLine: state.voiceAgentLine, suggestedUserResponses: state.suggestedUserResponses });
   return {};
 }
 
 export function buildScenarioGraph() {
+  console.log("[scenario] Building graph (learner → image_understanding → orchestrator → planner → task_generator → feedback).");
   const graph = new StateGraph(ScenarioStateAnnotation)
     .addNode("learner", learnerAgent)
     .addNode("image_understanding", imageUnderstandingAgent)
