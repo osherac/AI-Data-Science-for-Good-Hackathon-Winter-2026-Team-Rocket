@@ -19,10 +19,10 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Talkbridge",
+  title: "Hello",
   description:
     "A voice-first, image-assisted English learning app for newcomers practicing everyday conversations.",
-  applicationName: "Talkbridge",
+  applicationName: "Hello",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "Talkbridge",
+    title: "Hello",
     statusBarStyle: "default",
   },
 };

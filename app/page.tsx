@@ -814,7 +814,7 @@ export default function Home() {
             <span className="brand-mark">
               <Image
                 src="/logo%202.png"
-                alt="Salamalaikum logo"
+                alt="Hello"
                 width={44}
                 height={44}
                 className="brand-logo"
@@ -822,9 +822,9 @@ export default function Home() {
               />
             </span>
             <div>
-              <p>Salamalaikum</p>
+              <p>Hello</p>
               <span>
-                {view === "home" && "Learn the words you need, right where you are"}
+                {view === "home" && "Assalamalaikum!"}
                 {view === "record" && "Record conversation"}
                 {view === "start-upload" && "Start with image"}
                 {view === "conversation" && "Conversation"}
@@ -923,14 +923,6 @@ export default function Home() {
                         <span className="past-scenario-title">
                           {stored.title ?? "Conversation"}
                         </span>
-                        <span className="past-scenario-date">
-                          {new Date(stored.createdAt).toLocaleDateString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
                         <button
                           type="button"
                           className="saved-conversation-delete"
@@ -955,7 +947,6 @@ export default function Home() {
                         />
                         <span className="past-scenario-overlay" />
                         <span className="past-scenario-title">{scenario.title}</span>
-                        <span className="past-scenario-date">Start with image</span>
                       </button>
                     ))}
                   </div>
@@ -1343,15 +1334,6 @@ export default function Home() {
                       >
                         <span className="past-scenario-title">
                           Recording {recordingsList.length - i}
-                        </span>
-                        <span className="past-scenario-date">
-                          {new Date(rec.date).toLocaleString(undefined, {
-                            year: "numeric",
-                            month: "2-digit",
-                            day: "2-digit",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
                         </span>
                         <button
                           type="button"
