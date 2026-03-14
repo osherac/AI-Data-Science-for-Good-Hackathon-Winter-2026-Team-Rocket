@@ -13,6 +13,21 @@ const CATEGORIES = [
   { id: "work", label: "Work" },
 ] as const;
 
+const HOME_SCENARIO_IMAGE_POOL = [
+  { title: "Classroom", imageSrc: "/classroom.jpg" },
+  { title: "Garden", imageSrc: "/garden.jpg" },
+  { title: "Grocery", imageSrc: "/grocery.jpg" },
+] as const;
+
+const HOME_EXAMPLE_SCENARIOS = Array.from({ length: 18 }, (_, index) => {
+  const item = HOME_SCENARIO_IMAGE_POOL[index % HOME_SCENARIO_IMAGE_POOL.length];
+  return {
+    id: `sample-${index + 1}`,
+    title: item.title,
+    imageSrc: item.imageSrc,
+  };
+});
+
 export type StoredRecording = {
   id: string;
   transcript: string;
@@ -167,6 +182,12 @@ export default function Home() {
   const refreshRecordings = useCallback(() => {
     setRecordingsList(getStoredRecordings());
   }, []);
+
+  useEffect(() => {
+    if (view === "home") {
+      refreshRecordings();
+    }
+  }, [view, refreshRecordings]);
 
   const startCamera = useCallback(async () => {
     setCameraError(null);
@@ -500,63 +521,46 @@ export default function Home() {
 
         {view === "home" && (
           <>
-            <section className="main-card">
-              <div className="flex flex-col items-center gap-6">
-                <p className="text-lg font-semibold text-[var(--foreground)]">
-                  What would you like to do?
-                </p>
-                <div className="grid w-full grid-cols-2 gap-4">
-                  <button
-                    type="button"
-                    className="action-button flex min-h-[5.5rem] flex-col"
-                    onClick={() => setView("record")}
-                    aria-label="Record conversation"
-                  >
-                    <span className="action-icon">
-                      <Icon name="record" className="glyph" size={28} />
-                    </span>
-                    <span>Record</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="action-button flex min-h-[5.5rem] flex-col"
-                    onClick={() => setView("start-upload")}
-                    aria-label="Start with image"
-                  >
-                    <span className="action-icon">
-                      <Icon name="upload" className="glyph" size={24} />
-                    </span>
-                    <span>Start</span>
-                  </button>
+            <section className="main-card home-main-card">
+              <div className="home-front">
+                <button
+                  type="button"
+                  className="camera-launch"
+                  onClick={() => setView("start-upload")}
+                  aria-label="Start with camera"
+                >
+                  <span className="camera-launch-icon">
+                    <Icon name="camera" size={42} />
+                  </span>
+                  <span className="camera-launch-title">Open Camera</span>
+                </button>
+
+                <div className="past-scenarios-wrap">
+                  <div className="past-scenarios-head">
+                    <p>Past Scenarios</p>
+                  </div>
+
+                  <div className="past-scenarios-grid" aria-label="Past scenarios list">
+                    {HOME_EXAMPLE_SCENARIOS.map((scenario) => (
+                      <button
+                        key={scenario.id}
+                        type="button"
+                        className="past-scenario-card"
+                        onClick={() => setView("start-upload")}
+                      >
+                        <img
+                          src={scenario.imageSrc}
+                          alt={`${scenario.title} example`}
+                          className="past-scenario-image"
+                        />
+                        <span className="past-scenario-overlay" />
+                        <span className="past-scenario-title">{scenario.title}</span>
+                        <span className="past-scenario-date">Empty scenario</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  className="text-sm font-semibold text-[var(--accent)] underline underline-offset-2"
-                  onClick={() => {
-                    setView("recordings");
-                    refreshRecordings();
-                  }}
-                >
-                  View recordings
-                </button>
               </div>
-            </section>
-            <section className="scenario-row">
-              <p className="w-full text-sm font-semibold text-[var(--foreground)]/70">
-                Situation
-              </p>
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  className={`chip ${selectedCategory === cat.id ? "selected" : ""}`}
-                  onClick={() =>
-                    setSelectedCategory(selectedCategory === cat.id ? null : cat.id)
-                  }
-                >
-                  {cat.label}
-                </button>
-              ))}
             </section>
           </>
         )}
@@ -886,22 +890,6 @@ export default function Home() {
           </section>
         )}
 
-        {view === "home" && (
-          <nav className="bottom-nav" aria-label="Primary">
-            <button type="button" className="nav-button active" aria-current="page">
-              <Icon name="home" className="nav-glyph" />
-              <span>Home</span>
-            </button>
-            <button type="button" className="nav-button">
-              <Icon name="mic" className="nav-glyph" />
-              <span>Talk</span>
-            </button>
-            <button type="button" className="nav-button">
-              <Icon name="person" className="nav-glyph" />
-              <span>Me</span>
-            </button>
-          </nav>
-        )}
       </section>
     </main>
   );
