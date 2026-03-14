@@ -5,7 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 const SCRIPTS_KEY = "talkbridge_scripts";
+const CONVERSATIONS_KEY = "talkbridge_conversations";
 const MAX_RECORDINGS = 20;
+const MAX_SAVED_CONVERSATIONS = 50;
 const CATEGORIES = [
   { id: "school", label: "School" },
   { id: "doctor", label: "Doctor" },
@@ -36,6 +38,48 @@ export type StoredRecording = {
 };
 
 type View = "home" | "record" | "start-upload" | "conversation" | "recordings";
+
+type ConversationMessage = {
+  role: "agent" | "user";
+  text: string;
+  errorRanges?: { start: number; end: number }[];
+};
+
+/** Strip JSON from AI output so only readable text is shown. */
+function stripJsonFromText(text: string): string {
+  if (typeof text !== "string") return "";
+  const t = text.trim();
+  if (!t) return "";
+  if (t.startsWith("{") || t.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(t) as unknown;
+      if (typeof parsed === "string") return parsed;
+      if (parsed && typeof parsed === "object") {
+        const obj = parsed as Record<string, unknown>;
+        const preferred = obj.voiceAgentLine ?? obj.message ?? obj.text ?? obj.content;
+        if (typeof preferred === "string") return preferred;
+        if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === "string") return parsed[0];
+        const firstStr = Object.values(obj).find((v) => typeof v === "string");
+        if (typeof firstStr === "string") return firstStr;
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return text;
+}
+
+/** Pick an emoji to add context for an AI message. */
+function getAgentMessageEmoji(text: string): string {
+  if (!text || typeof text !== "string") return "💬";
+  const lower = text.toLowerCase();
+  if (/\?$/.test(text.trim()) || lower.includes("what ") || lower.includes("how ") || lower.includes("would you")) return "🤔";
+  if (lower.includes("great") || lower.includes("good job") || lower.includes("well done") || lower.includes("nice")) return "👍";
+  if (lower.includes("try saying") || lower.includes("you could") || lower.includes("suggest")) return "💡";
+  if (lower.includes("hello") || lower.includes("hi ") || lower.includes("welcome")) return "👋";
+  if (text.length < 60 && !/[.!?]/.test(text)) return "💬";
+  return "💬";
+}
 
 function renderTextWithHighlights(
   text: string,
@@ -160,6 +204,14 @@ function Icon({
         <polyline points="6 22 6 18 10 18" />
       </>
     ),
+    trash: (
+      <>
+        <polyline points="3 6 5 6 21 6" />
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        <line x1="10" y1="11" x2="10" y2="17" />
+        <line x1="14" y1="11" x2="14" y2="17" />
+      </>
+    ),
   };
   return <svg {...s}>{path[name] ?? null}</svg>;
 }
@@ -192,6 +244,66 @@ function saveRecording(transcript: string): StoredRecording {
   return rec;
 }
 
+export type StoredConversation = {
+  id: string;
+  createdAt: string;
+  conversation: ConversationMessage[];
+  scenarioContext?: string;
+  title?: string;
+  /** Data URL of the image used when starting this conversation (camera/upload). */
+  imageDataUrl?: string;
+};
+
+function getStoredConversations(): StoredConversation[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(CONVERSATIONS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const list = Array.isArray(parsed) ? parsed : [];
+    return list
+      .map((item: { id?: string; createdAt?: string; conversation?: ConversationMessage[]; scenarioContext?: string; title?: string; imageDataUrl?: string }, i: number) => ({
+        id: item.id ?? `conv-${i}-${Date.now()}`,
+        createdAt: item.createdAt ?? new Date().toISOString(),
+        conversation: Array.isArray(item.conversation) ? (item.conversation as ConversationMessage[]) : [],
+        scenarioContext: item.scenarioContext,
+        title: item.title,
+        imageDataUrl: typeof item.imageDataUrl === "string" ? item.imageDataUrl : undefined,
+      }))
+      .slice(0, MAX_SAVED_CONVERSATIONS);
+  } catch {
+    return [];
+  }
+}
+
+function saveConversationToStorage(
+  conversation: ConversationMessage[],
+  scenarioContext?: string,
+  imageDataUrl?: string | null
+): void {
+  if (typeof window === "undefined" || !Array.isArray(conversation)) return;
+  if (conversation.length === 0) return;
+  const list = getStoredConversations();
+  const id = `conv-${Date.now()}`;
+  const firstLine = conversation.find((m) => m.role === "agent")?.text;
+  const title = firstLine ? stripJsonFromText(firstLine).slice(0, 40) + (firstLine.length > 40 ? "…" : "") : undefined;
+  const entry: StoredConversation = {
+    id,
+    createdAt: new Date().toISOString(),
+    conversation,
+    scenarioContext,
+    title,
+    imageDataUrl: imageDataUrl || undefined,
+  };
+  const updated = [entry, ...list.filter((c) => c.id !== id)].slice(0, MAX_SAVED_CONVERSATIONS);
+  localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(updated));
+}
+
+function deleteSavedConversation(id: string): void {
+  if (typeof window === "undefined") return;
+  const list = getStoredConversations().filter((c) => c.id !== id);
+  localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(list));
+}
+
 export default function Home() {
   const [view, setView] = useState<View>("home");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -202,9 +314,7 @@ export default function Home() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [sessionImageBase64, setSessionImageBase64] = useState<string | null>(null);
   const [sessionImageMimeType, setSessionImageMimeType] = useState<string | null>(null);
-  const [conversation, setConversation] = useState<
-    { role: "agent" | "user"; text: string; errorRanges?: { start: number; end: number }[] }[]
-  >([]);
+  const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [agentLine, setAgentLine] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [agentTurnLoading, setAgentTurnLoading] = useState(false);
@@ -213,6 +323,7 @@ export default function Home() {
   const [conversationError, setConversationError] = useState<string | null>(null);
   const [expandedRecordingId, setExpandedRecordingId] = useState<string | null>(null);
   const [recordingsList, setRecordingsList] = useState<StoredRecording[]>([]);
+  const [savedConversations, setSavedConversations] = useState<StoredConversation[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -278,6 +389,10 @@ export default function Home() {
   const openUploadView = useCallback(() => {
     setView("start-upload");
     setStartStatus("idle");
+    setImagePreview(null);
+    setImageFile(null);
+    setSessionImageBase64(null);
+    setSessionImageMimeType(null);
     setStartError("");
     setImagePreview(null);
     setImageFile(null);
@@ -286,6 +401,37 @@ export default function Home() {
     setCameraError(null);
     if (cameraOpen) closeCamera();
   }, [cameraOpen, closeCamera]);
+
+  /** Open Camera: start a new conversation (clear current convo, then go to start-upload). */
+  const startNewConversation = useCallback(() => {
+    setConversation([]);
+    setAgentLine("");
+    setSuggestions([]);
+    setConversationError(null);
+    openUploadView();
+  }, [openUploadView]);
+
+  const refreshSavedConversations = useCallback(() => {
+    setSavedConversations(getStoredConversations());
+  }, []);
+
+  const openSavedConversation = useCallback((stored: StoredConversation) => {
+    setConversation(stored.conversation);
+    const lastAgent = [...stored.conversation].reverse().find((m) => m.role === "agent");
+    setAgentLine(lastAgent ? stripJsonFromText(lastAgent.text) : "");
+    setSuggestions([]);
+    setConversationError(null);
+    setImagePreview(stored.imageDataUrl ?? null);
+    setStartStatus("ready");
+    setView("conversation");
+  }, []);
+
+  const handleDeleteSavedConversation = useCallback((e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    deleteSavedConversation(id);
+    setSavedConversations(getStoredConversations());
+  }, []);
 
   const captureFromCamera = useCallback(() => {
     const video = cameraVideoRef.current;
@@ -474,7 +620,8 @@ export default function Home() {
       }
 
       const scenario = await scenarioRes.json();
-      const voiceLine = scenario?.voiceAgentLine ?? "";
+      const rawVoice = scenario?.voiceAgentLine ?? "";
+      const voiceLine = stripJsonFromText(typeof rawVoice === "string" ? rawVoice : String(rawVoice));
       const suggested = Array.isArray(scenario?.suggestedUserResponses) ? scenario.suggestedUserResponses : [];
       flushSync(() => {
         setAgentLine(voiceLine);
@@ -620,7 +767,8 @@ export default function Home() {
           setConversationError("Invalid response from server");
           return;
         }
-        const agentText = data?.voiceAgentLine ?? "";
+        const rawAgent = data?.voiceAgentLine ?? "";
+        const agentText = stripJsonFromText(typeof rawAgent === "string" ? rawAgent : String(rawAgent));
         const nextSuggestions = Array.isArray(data?.suggestedUserResponses) ? data.suggestedUserResponses : [];
         setAgentLine(agentText);
         setSuggestions(nextSuggestions);
@@ -639,6 +787,16 @@ export default function Home() {
   useEffect(() => {
     pickSuggestionRef.current = pickSuggestion;
   }, [pickSuggestion]);
+
+  useEffect(() => {
+    if (view === "conversation" && conversation.length > 0) {
+      saveConversationToStorage(conversation, selectedCategory ?? undefined, imagePreview);
+    }
+  }, [view, conversation, selectedCategory, imagePreview]);
+
+  useEffect(() => {
+    if (view === "home") refreshSavedConversations();
+  }, [view, refreshSavedConversations]);
 
   return (
     <main className="mobile-shell">
@@ -672,6 +830,9 @@ export default function Home() {
               className="icon-circle"
               aria-label="Back"
               onClick={() => {
+                if (view === "conversation" && conversation.length > 0) {
+                  saveConversationToStorage(conversation, selectedCategory ?? undefined, imagePreview);
+                }
                 setView("home");
                 setStartStatus("idle");
                 setImagePreview(null);
@@ -701,7 +862,7 @@ export default function Home() {
                   <button
                     type="button"
                     className="camera-launch"
-                    onClick={openUploadView}
+                    onClick={startNewConversation}
                     aria-label="Start with camera"
                   >
                     <span className="camera-launch-icon">
@@ -725,10 +886,53 @@ export default function Home() {
 
                 <div className="past-scenarios-wrap">
                   <div className="past-scenarios-head">
-                    <p>Past Scenarios</p>
+                    <p>Saved conversations</p>
                   </div>
 
-                  <div className="past-scenarios-grid" aria-label="Past scenarios list">
+                  <div className="past-scenarios-grid" aria-label="Saved conversations list">
+                    {savedConversations.map((stored) => (
+                      <div
+                        key={stored.id}
+                        role="button"
+                        tabIndex={0}
+                        className="past-scenario-card saved-conversation-card"
+                        onClick={() => openSavedConversation(stored)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openSavedConversation(stored);
+                          }
+                        }}
+                      >
+                        {stored.imageDataUrl ? (
+                          <img
+                            src={stored.imageDataUrl}
+                            alt=""
+                            className="past-scenario-image"
+                          />
+                        ) : null}
+                        <span className="past-scenario-overlay" />
+                        <span className="past-scenario-title">
+                          {stored.title ?? "Conversation"}
+                        </span>
+                        <span className="past-scenario-date">
+                          {new Date(stored.createdAt).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                        <button
+                          type="button"
+                          className="saved-conversation-delete"
+                          onClick={(e) => handleDeleteSavedConversation(e, stored.id)}
+                          aria-label="Delete conversation"
+                        >
+                          <Icon name="trash" size={16} />
+                        </button>
+                      </div>
+                    ))}
                     {HOME_EXAMPLE_SCENARIOS.map((scenario) => (
                       <button
                         key={scenario.id}
@@ -743,6 +947,7 @@ export default function Home() {
                         />
                         <span className="past-scenario-overlay" />
                         <span className="past-scenario-title">{scenario.title}</span>
+                        <span className="past-scenario-date">Start with image</span>
                       </button>
                     ))}
                   </div>
@@ -962,7 +1167,8 @@ export default function Home() {
                 {Array.isArray(conversation) &&
                   conversation.map((m, i) => {
                     const role = m?.role === "user" ? "user" : "agent";
-                    const text = typeof m?.text === "string" ? m.text : "";
+                    const rawText = typeof m?.text === "string" ? m.text : "";
+                    const text = role === "agent" ? stripJsonFromText(rawText) : rawText;
                     const lineKey = `msg-${i}`;
                     const content =
                       role === "user" && m?.errorRanges
@@ -979,6 +1185,9 @@ export default function Home() {
                         style={{ color: "#2c2c2c" }}
                       >
                         <div className="flex items-start gap-2">
+                          {role === "agent" && (
+                            <span className="shrink-0" aria-hidden>{getAgentMessageEmoji(rawText)}</span>
+                          )}
                           <div className="min-w-0 flex-1 break-words">{content}</div>
                           <button
                             type="button"
