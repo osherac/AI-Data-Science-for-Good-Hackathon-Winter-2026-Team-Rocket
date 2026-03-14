@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const SCRIPTS_KEY = "talkbridge_scripts";
@@ -453,12 +454,19 @@ export default function Home() {
         <header className="top-bar">
           <div className="brand">
             <span className="brand-mark">
-              <Icon name="mic" size={20} />
+              <Image
+                src="/logo%202.png"
+                alt="Salamalaikum logo"
+                width={44}
+                height={44}
+                className="brand-logo"
+                priority
+              />
             </span>
             <div>
-              <p>Talkbridge</p>
+              <p>Salamalaikum</p>
               <span>
-                {view === "home" && "Practice speaking"}
+                {view === "home" && "Learn the words you need, right where you are"}
                 {view === "record" && "Record conversation"}
                 {view === "start-upload" && "Start with image"}
                 {view === "conversation" && "Conversation"}
@@ -486,11 +494,6 @@ export default function Home() {
               }}
             >
               <Icon name="back" className="small-glyph" size={20} />
-            </button>
-          )}
-          {view === "home" && (
-            <button type="button" className="icon-circle" aria-label="Profile">
-              <Icon name="person" className="small-glyph" size={20} />
             </button>
           )}
         </header>

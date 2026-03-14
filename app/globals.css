@@ -80,10 +80,11 @@ button {
 
 .top-bar {
   justify-content: space-between;
+  padding: 0.2rem 0.1rem;
 }
 
 .brand {
-  gap: 0.7rem;
+  gap: 0.85rem;
 }
 
 .brand-mark,
@@ -96,12 +97,21 @@ button {
 }
 
 .brand-mark {
-  width: 2.8rem;
-  height: 2.8rem;
-  border-radius: var(--radius-btn);
-  background: linear-gradient(135deg, var(--accent) 0%, #c98f0e 100%);
-  color: #fff;
-  box-shadow: var(--shadow);
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  box-shadow: none;
+  overflow: visible;
+  flex: 0 0 auto;
+}
+
+.brand-logo {
+  width: 3.25rem;
+  height: 3.25rem;
+  object-fit: contain;
+  display: block;
 }
 
 .brand p,
@@ -114,19 +124,19 @@ button {
 }
 
 .brand p {
-  font-size: 0.94rem;
+  font-size: 1rem;
   font-weight: 800;
 }
 
 .brand span {
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   color: rgba(44, 44, 44, 0.55);
 }
 
 .icon-circle {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.7rem;
+  height: 2.7rem;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.72);
