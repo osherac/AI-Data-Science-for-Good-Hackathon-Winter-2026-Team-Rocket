@@ -195,6 +195,20 @@ function Icon({
         <circle cx="12" cy="13" r="4" />
       </>
     ),
+    eye: (
+      <>
+        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z" />
+        <circle cx="12" cy="12" r="3" />
+      </>
+    ),
+    "eye-off": (
+      <>
+        <path d="M3 3l18 18" />
+        <path d="M10.9 10.9a1.5 1.5 0 0 0 2.1 2.1" />
+        <path d="M6.4 6.4A16.3 16.3 0 0 0 2 12s3.5 6 10 6a9.7 9.7 0 0 0 4.7-1.1" />
+        <path d="M9.1 5.3A10 10 0 0 1 12 6c6.5 0 10 6 10 6a16.7 16.7 0 0 1-2.6 3.3" />
+      </>
+    ),
     check: <path d="M20 6 9 17l-5-5" />,
     cycle: (
       <>
@@ -969,7 +983,6 @@ export default function Home() {
                 <span className="big-ring">
                   <Icon name="mic" className="mic-glyph" size={40} />
                 </span>
-                <span className="big-label">Tap to record</span>
               </button>
             )}
             {recording && (
@@ -979,10 +992,9 @@ export default function Home() {
                 onClick={stopRecording}
                 aria-label="Stop recording"
               >
-                <span className="big-ring bg-red-500/20">
+                <span className="big-ring recording-pulse">
                   <Icon name="record" className="mic-glyph" size={40} />
                 </span>
-                <span className="big-label">Stop</span>
               </button>
             )}
             {transcribeStatus === "loading" && (
@@ -1320,25 +1332,10 @@ export default function Home() {
                   </span>
                   <span className="camera-launch-title">Record</span>
                 </button>
-                <button
-                  type="button"
-                  className="camera-launch recordings-launch"
-                  onClick={() => refreshRecordings()}
-                  aria-label="View recordings"
-                >
-                  <span className="camera-launch-icon">
-                    <Icon name="mic" size={42} />
-                  </span>
-                  <span className="camera-launch-title">View recordings</span>
-                </button>
+
               </div>
               <div className="past-scenarios-wrap">
-                <div className="past-scenarios-head">
-                  <p>Recordings</p>
-                </div>
-                <p className="past-scenarios-empty text-[var(--foreground)]/70">
-                  Up to {MAX_RECORDINGS} saved on this device. Tap View to see the transcribed text.
-                </p>
+
                 {recordingsList.length === 0 ? (
                   <p className="past-scenarios-empty text-[var(--foreground)]/60">
                     No recordings yet. Record from the home screen.
@@ -1354,9 +1351,10 @@ export default function Home() {
                           Recording {recordingsList.length - i}
                         </span>
                         <span className="past-scenario-date">
-                          {new Date(rec.date).toLocaleDateString(undefined, {
-                            month: "short",
-                            day: "numeric",
+                          {new Date(rec.date).toLocaleString(undefined, {
+                            year: "numeric",
+                            month: "2-digit",
+                            day: "2-digit",
                             hour: "2-digit",
                             minute: "2-digit",
                           })}
@@ -1367,8 +1365,11 @@ export default function Home() {
                           onClick={() =>
                             setExpandedRecordingId(expandedRecordingId === rec.id ? null : rec.id)
                           }
+                          aria-label={
+                            expandedRecordingId === rec.id ? "Hide transcript" : "Show transcript"
+                          }
                         >
-                          {expandedRecordingId === rec.id ? "Hide text" : "View"}
+                          <Icon name={expandedRecordingId === rec.id ? "eye" : "eye-off"} size={20} />
                         </button>
                         {expandedRecordingId === rec.id && (
                           <div className="recordings-transcript">

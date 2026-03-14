@@ -411,19 +411,25 @@ button {
 
 .recordings-view-btn {
   margin-top: auto;
-  width: 100%;
-  padding: 0.5rem 0.75rem;
+  align-self: flex-end;
+  width: 2.6rem;
+  height: 2.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: var(--radius-btn);
   border: 1px solid var(--line);
   background: var(--accent-soft);
-  font-size: 0.8rem;
-  font-weight: 700;
   color: var(--foreground);
-  transition: filter var(--transition);
+  transition: filter var(--transition), transform var(--transition);
 }
 
 .recordings-view-btn:hover {
   filter: brightness(1.05);
+}
+
+.recordings-view-btn:active {
+  transform: scale(var(--tap-scale));
 }
 
 .recordings-transcript {
@@ -461,6 +467,39 @@ button {
     0 0 0 0.85rem var(--accent-soft),
     0 0 0 1.7rem rgba(229, 167, 18, 0.06);
   color: #b8860b;
+}
+
+.recording-pulse {
+  color: #b91c1c;
+  background: linear-gradient(180deg, #fff3f3 0%, #fecaca 100%);
+  animation: recording-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes recording-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow:
+      0 0 0 0.85rem rgba(239, 68, 68, 0.18),
+      0 0 0 1.7rem rgba(239, 68, 68, 0.08);
+  }
+  50% {
+    transform: scale(1.045);
+    box-shadow:
+      0 0 0 1.05rem rgba(239, 68, 68, 0.22),
+      0 0 0 2.05rem rgba(239, 68, 68, 0.1);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 0 0.85rem rgba(239, 68, 68, 0.18),
+      0 0 0 1.7rem rgba(239, 68, 68, 0.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recording-pulse {
+    animation: none;
+  }
 }
 
 .big-label {
