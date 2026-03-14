@@ -1,11 +1,9 @@
-const CACHE_NAME = "voice-bot-v1";
+const CACHE_NAME = "voice-bot-v2";
 const STATIC_ASSETS = [
   "/",
   "/offline.html",
   "/manifest.webmanifest",
-  "/icon-192.svg",
-  "/icon-512.svg",
-  "/apple-touch-icon.svg"
+  "/logo%202.png"
 ];
 
 self.addEventListener("install", (event) => {
