@@ -1,6 +1,6 @@
-# Talkbridge
+# Hello 👋
 
-Talkbridge is a voice-first, image-assisted English learning app for newcomers practicing real-world conversations (school, doctor, store, transit, and work).
+Hello is a voice-first, image-assisted English learning app for newcomers practicing real-world conversations (school, doctor, store, transit, and work).
 
 ## What the software does
 
