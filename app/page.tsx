@@ -917,7 +917,7 @@ export default function Home() {
                       <button
                         type="button"
                         className="action-button min-h-[3.5rem] w-full"
-                        onClick={() => playLine(displayLine)}
+                        onClick={playAgentLine}
                         aria-label="Play agent line"
                       >
                         <span className="action-icon">
@@ -938,10 +938,17 @@ export default function Home() {
                       {suggestions.map((s, idx) => (
                         <li
                           key={idx}
-                          className="rounded-[var(--radius-btn)] border border-[var(--line)] bg-[var(--panel)] px-3 py-2"
-                          style={{ color: "#2c2c2c" }}
+                          className="rounded-[var(--radius-btn)] border border-[var(--line)] bg-[var(--panel)]"
                         >
-                          {typeof s === "string" ? s : String(s)}
+                          <button
+                            type="button"
+                            className="w-full px-3 py-2 text-left"
+                            style={{ color: "#2c2c2c" }}
+                            onClick={() => playLine(typeof s === "string" ? s : String(s))}
+                            aria-label={`Play suggested response ${idx + 1}`}
+                          >
+                            {typeof s === "string" ? s : String(s)}
+                          </button>
                         </li>
                       ))}
                     </ul>
