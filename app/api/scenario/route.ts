@@ -89,13 +89,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const graph = buildScenarioGraph();
-    const result = await graph.invoke({
+    const input = {
       userInfo,
       imageBase64,
       imageMimeType,
       conversationHistory,
       scenarioContext,
-    });
+    };
+    // LangGraph 1.x state expects OverwriteValue wrappers; cast to satisfy invoke() input type
+    const result = await graph.invoke(input as unknown as Parameters<typeof graph.invoke>[0]);
 
     return NextResponse.json({
       voiceAgentLine: result.voiceAgentLine ?? "",

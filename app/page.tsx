@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const SCRIPTS_KEY = "talkbridge_scripts";
 const MAX_RECORDINGS = 20;
@@ -142,10 +142,80 @@ export default function Home() {
   const chunksRef = useRef<Blob[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const conversationRef = useRef(conversation);
+  const recordingForConversationRef = useRef(false);
+  const pickSuggestionRef = useRef<(text: string) => void>(() => {});
+  useEffect(() => {
+    conversationRef.current = conversation;
+  }, [conversation]);
+
+  useEffect(() => {
+    if (!cameraOpen || !cameraStreamRef.current) return;
+    const video = cameraVideoRef.current;
+    if (!video) return;
+    video.srcObject = cameraStreamRef.current;
+    return () => {
+      video.srcObject = null;
+    };
+  }, [cameraOpen]);
 
   const refreshRecordings = useCallback(() => {
     setRecordingsList(getStoredRecordings());
   }, []);
+
+  const startCamera = useCallback(async () => {
+    setCameraError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      cameraStreamRef.current = stream;
+      setCameraOpen(true);
+    } catch (e) {
+      try {
+        const fallback = await navigator.mediaDevices.getUserMedia({ video: true });
+        cameraStreamRef.current = fallback;
+        setCameraOpen(true);
+      } catch (e2) {
+        setCameraError(e2 instanceof Error ? e2.message : "Camera access denied");
+      }
+    }
+  }, []);
+
+  const closeCamera = useCallback(() => {
+    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+    cameraStreamRef.current = null;
+    setCameraOpen(false);
+    setCameraError(null);
+  }, []);
+
+  const captureFromCamera = useCallback(() => {
+    const video = cameraVideoRef.current;
+    const stream = cameraStreamRef.current;
+    if (!video || !stream || video.readyState < 2) return;
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const file = new File([blob], "capture.jpg", { type: "image/jpeg" });
+        setImageFile(file);
+        const url = URL.createObjectURL(blob);
+        setImagePreview(url);
+        closeCamera();
+      },
+      "image/jpeg",
+      0.9
+    );
+  }, [closeCamera]);
 
   const startRecording = useCallback(async () => {
     try {
@@ -215,11 +285,25 @@ export default function Home() {
       const data = JSON.parse(raw) as { transcript?: string };
       const transcript = data.transcript ?? "";
       setLastTranscript(transcript);
-      if (transcript) saveRecording(transcript);
-      setTranscribeStatus("done");
+      if (recordingForConversationRef.current) {
+        recordingForConversationRef.current = false;
+        if (transcript) {
+          pickSuggestionRef.current(transcript);
+        } else {
+          setConversationError("No speech detected. Try recording again.");
+        }
+        setTranscribeStatus("idle");
+      } else {
+        if (transcript) saveRecording(transcript);
+        setTranscribeStatus("done");
+      }
     } catch (e) {
       setTranscribeStatus("error");
       setLastTranscript(e instanceof Error ? e.message : "Failed");
+      if (recordingForConversationRef.current) {
+        recordingForConversationRef.current = false;
+        setConversationError(e instanceof Error ? e.message : "Recording failed");
+      }
       console.error("[transcribe] Failed:", e);
     }
   }, []);
@@ -315,7 +399,8 @@ export default function Home() {
 
   const pickSuggestion = useCallback(
     async (text: string) => {
-      const newHistory = [...conversation, { role: "user" as const, text }];
+      const currentConversation = conversationRef.current;
+      const newHistory = [...currentConversation, { role: "user" as const, text }];
       setConversation(newHistory);
       setSuggestions([]);
       setAgentLine("");
@@ -358,6 +443,10 @@ export default function Home() {
     [conversation, selectedCategory]
   );
 
+  useEffect(() => {
+    pickSuggestionRef.current = pickSuggestion;
+  }, [pickSuggestion]);
+
   return (
     <main className="mobile-shell">
       <section className="phone-frame">
@@ -392,6 +481,8 @@ export default function Home() {
                 setSuggestions([]);
                 setConversationError(null);
                 setExpandedRecordingId(null);
+                recordingForConversationRef.current = false;
+                if (cameraOpen) closeCamera();
               }}
             >
               <Icon name="back" className="small-glyph" size={20} />
@@ -545,28 +636,44 @@ export default function Home() {
                     e.target.value = "";
                   }}
                 />
-                <input
-                  ref={cameraInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) {
-                      setImageFile(f);
-                      const r = new FileReader();
-                      r.onload = () => setImagePreview(r.result as string);
-                      r.readAsDataURL(f);
-                    }
-                    e.target.value = "";
-                  }}
-                />
+                {cameraOpen ? (
+                  <div className="flex flex-col gap-3">
+                    <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-card)] border border-[var(--line)] bg-black">
+                      <video
+                        ref={cameraVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="h-full w-full object-cover"
+                        style={{ transform: "scaleX(-1)" }}
+                      />
+                    </div>
+                    {cameraError && (
+                      <p className="text-center text-sm text-red-600">{cameraError}</p>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="action-button min-h-[3rem] flex-1"
+                        onClick={captureFromCamera}
+                      >
+                        Capture
+                      </button>
+                      <button
+                        type="button"
+                        className="min-h-[3rem] rounded-[var(--radius-btn)] border border-[var(--line)] px-4 text-sm font-medium"
+                        onClick={closeCamera}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
                     className="flex min-h-[10rem] cursor-pointer flex-col items-center justify-center rounded-[var(--radius-card)] border-2 border-dashed border-[var(--line)] bg-[var(--panel)] transition hover:bg-[var(--pastel-sky)]/30"
-                    onClick={() => cameraInputRef.current?.click()}
+                    onClick={startCamera}
                   >
                     <Icon name="camera" size={40} className="text-[var(--foreground)]/50" />
                     <span className="mt-2 text-sm font-semibold text-[var(--foreground)]/70">
@@ -584,6 +691,7 @@ export default function Home() {
                     </span>
                   </button>
                 </div>
+                )}
               </div>
             ) : (
               <>
@@ -674,20 +782,55 @@ export default function Home() {
                 <p className="text-[var(--foreground)]/80">{agentLine}</p>
               </div>
             )}
-            <div className="mt-auto flex flex-col gap-2">
+            <div className="mt-auto flex flex-col gap-3">
+              {suggestions.length > 0 && (
+                <>
+                  <p className="text-sm font-semibold text-[var(--foreground)]/70">
+                    You could say something like:
+                  </p>
+                  <ul className="space-y-1 text-sm text-[var(--foreground)]/80">
+                    {suggestions.map((s) => (
+                      <li key={s} className="rounded-[var(--radius-btn)] border border-[var(--line)] bg-[var(--panel)] px-3 py-2">
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
               <p className="text-sm font-semibold text-[var(--foreground)]/70">
-                Say something:
+                Record your response:
               </p>
-              {suggestions.map((s) => (
+              {!recording ? (
                 <button
-                  key={s}
                   type="button"
-                  className="phrase-btn w-full"
-                  onClick={() => pickSuggestion(s)}
+                  className="action-button min-h-[3.5rem] w-full"
+                  onClick={() => {
+                    recordingForConversationRef.current = true;
+                    startRecording();
+                  }}
+                  aria-label="Record your response"
                 >
-                  {s}
+                  <span className="action-icon">
+                    <Icon name="record" size={22} />
+                  </span>
+                  Record
                 </button>
-              ))}
+              ) : (
+                <button
+                  type="button"
+                  className="action-button min-h-[3.5rem] w-full bg-red-600 text-white hover:bg-red-700"
+                  onClick={stopRecording}
+                  aria-label="Stop recording"
+                >
+                  <span className="action-icon">
+                    <Icon name="record" size={22} />
+                  </span>
+                  Stop recording
+                </button>
+              )}
+              {transcribeStatus === "loading" && (
+                <p className="text-center text-sm text-[var(--foreground)]/70">Transcribing…</p>
+              )}
             </div>
           </section>
         )}
