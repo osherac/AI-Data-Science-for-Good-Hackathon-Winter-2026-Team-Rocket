@@ -81,6 +81,12 @@ function Icon({
         <path d="M5.5 19a6.5 6.5 0 0 1 13 0" />
       </>
     ),
+    camera: (
+      <>
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+        <circle cx="12" cy="13" r="4" />
+      </>
+    ),
   };
   return <svg {...s}>{path[name] ?? null}</svg>;
 }
@@ -134,6 +140,8 @@ export default function Home() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const refreshRecordings = useCallback(() => {
     setRecordingsList(getStoredRecordings());
@@ -517,11 +525,12 @@ export default function Home() {
         {view === "start-upload" && (
           <section className="main-card flex flex-1 flex-col gap-4">
             <p className="text-center text-[var(--foreground)]">
-              Upload an image of the situation (e.g. pharmacy, bus, office).
+              Add an image of the situation (e.g. pharmacy, bus, office). Take a photo or choose from gallery.
             </p>
             {!imagePreview ? (
-              <label className="flex min-h-[12rem] cursor-pointer flex-col items-center justify-center rounded-[var(--radius-card)] border-2 border-dashed border-[var(--line)] bg-[var(--panel)] transition hover:bg-[var(--pastel-sky)]/30">
+              <div className="flex min-h-[12rem] flex-col gap-3">
                 <input
+                  ref={fileInputRef}
                   type="file"
                   accept="image/*"
                   className="hidden"
@@ -533,30 +542,80 @@ export default function Home() {
                       r.onload = () => setImagePreview(r.result as string);
                       r.readAsDataURL(f);
                     }
+                    e.target.value = "";
                   }}
                 />
-                <Icon name="upload" size={40} className="text-[var(--foreground)]/50" />
-                <span className="mt-2 text-sm font-semibold text-[var(--foreground)]/70">
-                  Tap to choose image
-                </span>
-              </label>
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) {
+                      setImageFile(f);
+                      const r = new FileReader();
+                      r.onload = () => setImagePreview(r.result as string);
+                      r.readAsDataURL(f);
+                    }
+                    e.target.value = "";
+                  }}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    className="flex min-h-[10rem] cursor-pointer flex-col items-center justify-center rounded-[var(--radius-card)] border-2 border-dashed border-[var(--line)] bg-[var(--panel)] transition hover:bg-[var(--pastel-sky)]/30"
+                    onClick={() => cameraInputRef.current?.click()}
+                  >
+                    <Icon name="camera" size={40} className="text-[var(--foreground)]/50" />
+                    <span className="mt-2 text-sm font-semibold text-[var(--foreground)]/70">
+                      Take photo
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="flex min-h-[10rem] cursor-pointer flex-col items-center justify-center rounded-[var(--radius-card)] border-2 border-dashed border-[var(--line)] bg-[var(--panel)] transition hover:bg-[var(--pastel-sky)]/30"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Icon name="upload" size={40} className="text-[var(--foreground)]/50" />
+                    <span className="mt-2 text-sm font-semibold text-[var(--foreground)]/70">
+                      Choose image
+                    </span>
+                  </button>
+                </div>
+              </div>
             ) : (
               <>
                 <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-card)] border border-[var(--line)] bg-[var(--panel)]">
                   <img
                     src={imagePreview}
-                    alt="Upload"
+                    alt="Scene"
                     className="h-full w-full object-cover"
                   />
                 </div>
                 {startStatus === "idle" && (
-                  <button
-                    type="button"
-                    className="action-button min-h-[3.5rem] w-full"
-                    onClick={runStartFlow}
-                  >
-                    Generate conversation
-                  </button>
+                  <>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="action-button min-h-[3.5rem] flex-1"
+                        onClick={runStartFlow}
+                      >
+                        Generate conversation
+                      </button>
+                      <button
+                        type="button"
+                        className="min-h-[3.5rem] rounded-[var(--radius-btn)] border border-[var(--line)] px-4 text-sm font-medium text-[var(--foreground)]/80 hover:bg-[var(--panel)]"
+                        onClick={() => {
+                          setImageFile(null);
+                          setImagePreview(null);
+                        }}
+                      >
+                        Change image
+                      </button>
+                    </div>
+                  </>
                 )}
                 {startStatus === "loading" && (
                   <p className="text-center text-[var(--foreground)]/70">Understanding image & generating script…</p>
