@@ -203,6 +203,16 @@ button {
   min-width: 0;
 }
 
+.post-image-actions {
+  margin-top: 0.1rem;
+}
+
+.post-image-actions .post-image-action {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
 .home-main-card {
   justify-content: flex-start;
   min-height: 0;

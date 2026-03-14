@@ -73,17 +73,19 @@ function Icon({
   name,
   className,
   size = 24,
+  strokeWidth = 1.8,
 }: {
   name: string;
   className?: string;
   size?: number;
+  strokeWidth?: number;
 }) {
   const s = {
     fill: "none",
     stroke: "currentColor",
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
-    strokeWidth: 1.8,
+    strokeWidth,
     viewBox: "0 0 24 24",
     width: size,
     height: size,
@@ -141,6 +143,15 @@ function Icon({
       <>
         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
         <circle cx="12" cy="13" r="4" />
+      </>
+    ),
+    check: <path d="M20 6 9 17l-5-5" />,
+    cycle: (
+      <>
+        <path d="M3 12a9 9 0 0 1 14.8-6.9" />
+        <polyline points="18 2 18 6 14 6" />
+        <path d="M21 12a9 9 0 0 1-14.8 6.9" />
+        <polyline points="6 22 6 18 10 18" />
       </>
     ),
   };
@@ -677,7 +688,6 @@ export default function Home() {
                         />
                         <span className="past-scenario-overlay" />
                         <span className="past-scenario-title">{scenario.title}</span>
-                        <span className="past-scenario-date">Empty scenario</span>
                       </button>
                     ))}
                   </div>
@@ -823,23 +833,25 @@ export default function Home() {
                 </div>
                 {startStatus === "idle" && (
                   <>
-                    <div className="flex gap-2">
+                    <div className="home-top-actions post-image-actions">
                       <button
                         type="button"
-                        className="action-button min-h-[3.5rem] flex-1"
+                        className="camera-launch post-image-action"
                         onClick={runStartFlow}
+                        aria-label="Generate conversation"
                       >
-                        Generate conversation
+                        <Icon name="check" size={42} strokeWidth={2.8} />
                       </button>
                       <button
                         type="button"
-                        className="min-h-[3.5rem] rounded-[var(--radius-btn)] border border-[var(--line)] px-4 text-sm font-medium text-[var(--foreground)]/80 hover:bg-[var(--panel)]"
+                        className="camera-launch post-image-action"
                         onClick={() => {
                           setImageFile(null);
                           setImagePreview(null);
                         }}
+                        aria-label="Change image"
                       >
-                        Change image
+                        <Icon name="cycle" size={42} strokeWidth={2.2} />
                       </button>
                     </div>
                   </>
