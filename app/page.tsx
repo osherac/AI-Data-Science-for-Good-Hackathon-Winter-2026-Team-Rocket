@@ -781,6 +781,7 @@ export default function Home() {
               </button>
             )}
             {transcribeStatus === "loading" && (
+              <p className="text-[var(--foreground)]/70"></p>
             )}
             {transcribeStatus === "done" && (
               <div className="w-full space-y-3">
@@ -1090,9 +1091,7 @@ export default function Home() {
                   <span className="sr-only">Stop recording</span>
                 </button>
               )}
-              {transcribeStatus === "loading" && (
-                <p className="text-center text-sm text-[var(--foreground)]">Transcribing…</p>
-              )}
+
             </div>
           </section>
         )}
