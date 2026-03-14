@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
@@ -12,6 +13,21 @@ const CATEGORIES = [
   { id: "transit", label: "Transit" },
   { id: "work", label: "Work" },
 ] as const;
+
+const HOME_SCENARIO_IMAGE_POOL = [
+  { title: "Classroom", imageSrc: "/classroom.jpg" },
+  { title: "Garden", imageSrc: "/garden.jpg" },
+  { title: "Grocery", imageSrc: "/grocery.jpg" },
+] as const;
+
+const HOME_EXAMPLE_SCENARIOS = Array.from({ length: 18 }, (_, index) => {
+  const item = HOME_SCENARIO_IMAGE_POOL[index % HOME_SCENARIO_IMAGE_POOL.length];
+  return {
+    id: `sample-${index + 1}`,
+    title: item.title,
+    imageSrc: item.imageSrc,
+  };
+});
 
 export type StoredRecording = {
   id: string;
@@ -199,6 +215,12 @@ export default function Home() {
   const refreshRecordings = useCallback(() => {
     setRecordingsList(getStoredRecordings());
   }, []);
+
+  useEffect(() => {
+    if (view === "home") {
+      refreshRecordings();
+    }
+  }, [view, refreshRecordings]);
 
   const startCamera = useCallback(async () => {
     setCameraError(null);
@@ -536,12 +558,19 @@ export default function Home() {
         <header className="top-bar">
           <div className="brand">
             <span className="brand-mark">
-              <Icon name="mic" size={20} />
+              <Image
+                src="/logo%202.png"
+                alt="Salamalaikum logo"
+                width={44}
+                height={44}
+                className="brand-logo"
+                priority
+              />
             </span>
             <div>
-              <p>Talkbridge</p>
+              <p>Salamalaikum</p>
               <span>
-                {view === "home" && "Practice speaking"}
+                {view === "home" && "Learn the words you need, right where you are"}
                 {view === "record" && "Record conversation"}
                 {view === "start-upload" && "Start with image"}
                 {view === "conversation" && "Conversation"}
@@ -571,72 +600,66 @@ export default function Home() {
               <Icon name="back" className="small-glyph" size={20} />
             </button>
           )}
-          {view === "home" && (
-            <button type="button" className="icon-circle" aria-label="Profile">
-              <Icon name="person" className="small-glyph" size={20} />
-            </button>
-          )}
         </header>
 
         {view === "home" && (
           <>
-            <section className="main-card">
-              <div className="flex flex-col items-center gap-6">
-                <p className="text-lg font-semibold text-[var(--foreground)]">
-                  What would you like to do?
-                </p>
-                <div className="grid w-full grid-cols-2 gap-4">
+            <section className="main-card home-main-card">
+              <div className="home-front">
+                <div className="home-top-actions">
                   <button
                     type="button"
-                    className="action-button flex min-h-[5.5rem] flex-col"
-                    onClick={() => setView("record")}
-                    aria-label="Record conversation"
+                    className="camera-launch"
+                    onClick={() => setView("start-upload")}
+                    aria-label="Start with camera"
                   >
-                    <span className="action-icon">
-                      <Icon name="record" className="glyph" size={28} />
+                    <span className="camera-launch-icon">
+                      <Icon name="camera" size={42} />
                     </span>
-                    <span>Record</span>
+                    <span className="camera-launch-title">Open Camera</span>
                   </button>
                   <button
                     type="button"
-                    className="action-button flex min-h-[5.5rem] flex-col"
-                    onClick={() => setView("start-upload")}
-                    aria-label="Start with image"
+                    className="camera-launch recordings-launch"
+                    onClick={() => {
+                      setView("recordings");
+                      refreshRecordings();
+                    }}
+                    aria-label="View recordings"
                   >
-                    <span className="action-icon">
-                      <Icon name="upload" className="glyph" size={24} />
+                    <span className="camera-launch-icon">
+                      <Icon name="mic" size={42} />
                     </span>
-                    <span>Start</span>
+                    <span className="camera-launch-title">Recordings</span>
                   </button>
                 </div>
-                <button
-                  type="button"
-                  className="text-sm font-semibold text-[var(--accent)] underline underline-offset-2"
-                  onClick={() => {
-                    setView("recordings");
-                    refreshRecordings();
-                  }}
-                >
-                  View recordings
-                </button>
+
+                <div className="past-scenarios-wrap">
+                  <div className="past-scenarios-head">
+                    <p>Past Scenarios</p>
+                  </div>
+
+                  <div className="past-scenarios-grid" aria-label="Past scenarios list">
+                    {HOME_EXAMPLE_SCENARIOS.map((scenario) => (
+                      <button
+                        key={scenario.id}
+                        type="button"
+                        className="past-scenario-card"
+                        onClick={() => setView("start-upload")}
+                      >
+                        <img
+                          src={scenario.imageSrc}
+                          alt={`${scenario.title} example`}
+                          className="past-scenario-image"
+                        />
+                        <span className="past-scenario-overlay" />
+                        <span className="past-scenario-title">{scenario.title}</span>
+                        <span className="past-scenario-date">Empty scenario</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </section>
-            <section className="scenario-row">
-              <p className="w-full text-sm font-semibold text-[var(--foreground)]/70">
-                Situation
-              </p>
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  className={`chip ${selectedCategory === cat.id ? "selected" : ""}`}
-                  onClick={() =>
-                    setSelectedCategory(selectedCategory === cat.id ? null : cat.id)
-                  }
-                >
-                  {cat.label}
-                </button>
-              ))}
             </section>
           </>
         )}
@@ -960,69 +983,84 @@ export default function Home() {
         )}
 
         {view === "recordings" && (
-          <section className="main-card flex flex-1 flex-col gap-3 overflow-auto">
-            <p className="text-sm text-[var(--foreground)]/70">
-              Up to {MAX_RECORDINGS} recordings saved on this device. Tap View to see the transcribed text.
-            </p>
-            {recordingsList.length === 0 ? (
-              <p className="text-sm text-[var(--foreground)]/60">No recordings yet. Record from the home screen.</p>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {recordingsList.map((rec, i) => (
-                  <li
-                    key={rec.id}
-                    className="rounded-[var(--radius-btn)] border border-[var(--line)] bg-[var(--panel)] p-3 shadow-[var(--shadow)]"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold text-[var(--foreground)]">
-                        Recording {recordingsList.length - i}
-                      </span>
-                      <span className="text-xs text-[var(--foreground)]/55">
-                        {new Date(rec.date).toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="mt-2 w-full rounded-lg bg-[var(--accent-soft)] py-2 text-sm font-semibold text-[var(--foreground)] transition hover:brightness-95"
-                      onClick={() =>
-                        setExpandedRecordingId(expandedRecordingId === rec.id ? null : rec.id)
-                      }
-                    >
-                      {expandedRecordingId === rec.id ? "Hide text" : "View"}
-                    </button>
-                    {expandedRecordingId === rec.id && (
-                      <div className="mt-3 rounded-lg border border-[var(--line)] bg-white/60 p-3 text-sm text-[var(--foreground)]">
-                        {rec.transcript || "—"}
+          <section className="main-card home-main-card">
+            <div className="home-front">
+              <div className="home-top-actions">
+                <button
+                  type="button"
+                  className="camera-launch"
+                  onClick={() => setView("record")}
+                  aria-label="Record"
+                >
+                  <span className="camera-launch-icon">
+                    <Icon name="record" size={42} />
+                  </span>
+                  <span className="camera-launch-title">Record</span>
+                </button>
+                <button
+                  type="button"
+                  className="camera-launch recordings-launch"
+                  onClick={() => refreshRecordings()}
+                  aria-label="View recordings"
+                >
+                  <span className="camera-launch-icon">
+                    <Icon name="mic" size={42} />
+                  </span>
+                  <span className="camera-launch-title">View recordings</span>
+                </button>
+              </div>
+              <div className="past-scenarios-wrap">
+                <div className="past-scenarios-head">
+                  <p>Recordings</p>
+                </div>
+                <p className="past-scenarios-empty text-[var(--foreground)]/70">
+                  Up to {MAX_RECORDINGS} saved on this device. Tap View to see the transcribed text.
+                </p>
+                {recordingsList.length === 0 ? (
+                  <p className="past-scenarios-empty text-[var(--foreground)]/60">
+                    No recordings yet. Record from the home screen.
+                  </p>
+                ) : (
+                  <div className="past-scenarios-grid" aria-label="Recordings list">
+                    {recordingsList.map((rec, i) => (
+                      <div
+                        key={rec.id}
+                        className="past-scenario-card recordings-card"
+                      >
+                        <span className="past-scenario-title">
+                          Recording {recordingsList.length - i}
+                        </span>
+                        <span className="past-scenario-date">
+                          {new Date(rec.date).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                        <button
+                          type="button"
+                          className="recordings-view-btn"
+                          onClick={() =>
+                            setExpandedRecordingId(expandedRecordingId === rec.id ? null : rec.id)
+                          }
+                        >
+                          {expandedRecordingId === rec.id ? "Hide text" : "View"}
+                        </button>
+                        {expandedRecordingId === rec.id && (
+                          <div className="recordings-transcript">
+                            {rec.transcript || "—"}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </section>
         )}
 
-        {view === "home" && (
-          <nav className="bottom-nav" aria-label="Primary">
-            <button type="button" className="nav-button active" aria-current="page">
-              <Icon name="home" className="nav-glyph" />
-              <span>Home</span>
-            </button>
-            <button type="button" className="nav-button">
-              <Icon name="mic" className="nav-glyph" />
-              <span>Talk</span>
-            </button>
-            <button type="button" className="nav-button">
-              <Icon name="person" className="nav-glyph" />
-              <span>Me</span>
-            </button>
-          </nav>
-        )}
       </section>
     </main>
   );

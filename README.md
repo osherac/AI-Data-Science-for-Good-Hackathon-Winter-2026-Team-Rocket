@@ -1,36 +1,121 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Talkbridge
 
-## Getting Started
+Talkbridge is a voice-first, image-assisted English learning app for newcomers practicing real-world conversations (school, doctor, store, transit, and work).
 
-First, run the development server:
+## What the software does
+
+- Lets learners record short speech samples and saves transcripts locally.
+- Lets learners upload or capture a photo of a real-life situation.
+- Generates a role-play conversation based on the learner profile + scene.
+- Suggests simple reply options learners can tap.
+- Reads agent lines aloud with text-to-speech.
+- Continues the conversation turn-by-turn to simulate practice.
+
+## How it works
+
+1. The learner records audio in the browser.
+2. Audio is sent to `/api/transcribe` (OpenAI Whisper) and transcript is stored in `localStorage`.
+3. The learner uploads/captures an image and picks a scenario category.
+4. The app calls:
+- `/api/vision` to describe the scene.
+- `/api/scenario` to generate the conversation starter and reply suggestions.
+5. `/api/scenario` runs a LangGraph pipeline:
+- `learner` agent profiles the learner from saved transcripts/history.
+- `image_understanding` agent summarizes the image context.
+- `orchestrator` combines learner + scene into structured scenario context.
+- `planner` drafts conversation plan and suggestions.
+- `task_generator` creates the next agent line.
+- `feedback` validates/simplifies output quality.
+6. Agent text is optionally sent to `/api/tts` (Cartesia) and played back in the UI.
+7. On every learner response, `/api/scenario` is called again with `conversationHistory` to get the next turn.
+
+## Technologies used
+
+### Frontend
+
+- Next.js 16 (App Router)
+- React 19 + TypeScript
+- Tailwind CSS 4
+- Browser APIs: `MediaRecorder`, `getUserMedia`, `localStorage`
+- PWA support (`manifest.webmanifest`, service worker registration)
+
+### Backend / AI
+
+- Next.js Route Handlers (`app/api/*`)
+- LangGraph (`@langchain/langgraph`) for multi-agent orchestration
+- LangChain Core + Google GenAI integration
+- Gemini models (`gemini-2.0-flash`, `gemini-2.5-flash`) for scenario and vision reasoning
+- OpenAI Whisper (`whisper-1`) for speech-to-text
+- Cartesia TTS (`sonic-3`) for voice playback
+
+### Deployment
+
+- OpenNext Cloudflare adapter (`@opennextjs/cloudflare`)
+- Cloudflare Workers + Wrangler
+
+## API endpoints
+
+- `POST /api/transcribe`:
+- Input: multipart form with `audio`
+- Output: `{ transcript: string }`
+
+- `POST /api/vision`:
+- Input: `{ imageBase64, imageMimeType }`
+- Output: `{ description: string }`
+
+- `POST /api/scenario`:
+- Input: learner info, image (optional), scenario context, conversation history
+- Output: `{ voiceAgentLine: string, suggestedUserResponses: string[] }`
+
+- `POST /api/tts`:
+- Input: `{ transcript: string }`
+- Output: `{ audioBase64: string, mimeType: string }`
+
+## Local development
+
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+### 2. Add environment variables (`.env.local`)
+
+```bash
+GEMINI_API_KEY=...
+OPENAI_API_KEY=...
+CARTESIA_API_KEY=...
+```
+
+### 3. Start dev server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deployment (Cloudflare)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run deploy
+```
 
-## Learn More
+This builds with OpenNext and deploys to Cloudflare Workers.
 
-To learn more about Next.js, take a look at the following resources:
+For full hosting/domain setup, see [`HOSTING.md`](./HOSTING.md).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```text
+app/
+  api/
+    scenario/route.ts
+    transcribe/route.ts
+    tts/route.ts
+    vision/route.ts
+  page.tsx
+lib/
+  scenario-graph.ts
+  scenario-state.ts
+```
