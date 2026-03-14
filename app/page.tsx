@@ -1289,7 +1289,7 @@ export default function Home() {
               ) : (
                 <button
                   type="button"
-                  className="mx-auto inline-flex h-24 w-24 items-center justify-center rounded-full border border-red-600 bg-red-600 text-white shadow-[0_10px_24px_rgba(185,28,28,0.28)] transition hover:scale-105 hover:bg-red-700 active:scale-95"
+                  className="recording-pulse-btn mx-auto inline-flex h-24 w-24 items-center justify-center rounded-full border border-red-600 bg-red-600 text-white shadow-[0_10px_24px_rgba(185,28,28,0.28)] transition hover:scale-105 hover:bg-red-700 active:scale-95"
                   onClick={stopRecording}
                   aria-label="Stop recording"
                 >
